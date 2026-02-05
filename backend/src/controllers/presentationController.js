@@ -2,6 +2,7 @@ import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
 import { generatePresentation } from '../services/presentationService.js';
 
+
 /**
  * Presentation Generation Controller
  * Handles dynamic presentation generation based on form data
@@ -277,5 +278,74 @@ export {
     getHistory,
     getHistoryItem,
     download,
-    deleteHistory
+    deleteHistory,
+    createAndDownload,
+
+};
+
+// createPro removed as requested
+
+
+/**
+ * @route   POST /api/presentations/create-download
+ * @desc    Generate and immediately download presentation
+ * @access  Private
+ */
+const createAndDownload = async (req, res, next) => {
+    try {
+        const { presentationTypeId, formData, plots } = req.body;
+
+        // Validate required fields
+        if (!presentationTypeId || !formData) {
+            return res.status(400).json({
+                success: false,
+                message: 'Presentation type ID and form data are required'
+            });
+        }
+
+        const presentationType = await PresentationType.findById(presentationTypeId);
+
+        if (!presentationType) {
+            return res.status(404).json({
+                success: false,
+                message: 'Presentation type not found'
+            });
+        }
+
+        // For public access, use a dummy Guest ID
+        const guestId = '000000000000000000000000';
+        const userId = req.user ? req.user._id : guestId;
+
+        // Generate presentation
+        const result = await generatePresentation({
+            presentationType,
+            formData,
+            plots: plots || [],
+            userId: userId
+        });
+
+        // Save to history (optional but good for tracking)
+        // We use catch() to suppress errors if history creation fails for guests (e.g. foreign key constraints)
+        try {
+            await PresentationHistory.create({
+                user: userId,
+                presentationType: presentationType._id,
+                presentationTypeName: presentationType.name,
+                formData,
+                plots: plots || [],
+                generatedFileName: result.fileName,
+                filePath: result.filePath,
+                fileSize: result.fileSize,
+                status: 'completed'
+            });
+        } catch (hErr) {
+            console.warn("History tracking skipped for guest user:", hErr.message);
+        }
+
+        // Send file directly
+        res.download(result.filePath, result.fileName);
+
+    } catch (error) {
+        next(error);
+    }
 };

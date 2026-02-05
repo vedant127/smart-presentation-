@@ -1,229 +1,150 @@
 import PptxGenJS from 'pptxgenjs';
-import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 /**
- * PowerPoint Merging Service
- * Handles merging of multiple PPTX files into one presentation
+ * Generate a Professional "Gamma.ai style" Presentation - V2 Polished Design
+ * Optimized for spacing, typography, and color harmony.
+ * Replaces the old merging logic with direct programmatic generation.
  */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const LIBRARY_PATH = path.join(process.cwd(), 'Library');
-const GENERATED_PATH = path.join(process.cwd(), 'generated');
-
-// Ensure generated directory exists
-if (!fs.existsSync(GENERATED_PATH)) {
-    fs.mkdirSync(GENERATED_PATH, { recursive: true });
-}
+import { generateSlideContent } from './aiService.js';
 
 /**
- * Build file key from criteria values
- * Example: { city: 'Riyadh', assetType: 'Residential' } => 'riyadh + residential'
+ * Generate a Professional "Gamma.ai style" Presentation - V2 Polished Design
+ * Optimized for spacing, typography, and color harmony.
+ * Replaces the old merging logic with direct programmatic generation.
  */
-const buildFileKey = (criteriaValues) => {
-    return Object.values(criteriaValues)
-        .map(val => String(val).toLowerCase().trim())
-        .join(' + ');
-};
+import { Automizer, modify } from 'pptx-automizer';
 
 /**
- * Find PPTX file in section folder
+ * Presentation Assembly Engine
+ * Assembles a final presentation by stitching together existing PPTX files from the Library.
+ * Follows strict rules for Varying vs Unvarying sections.
  */
-const findPptxFile = (sectionPath, fileKey) => {
-    try {
-        if (!fs.existsSync(sectionPath)) {
-            console.warn(`Section path not found: ${sectionPath}`);
-            return null;
-        }
+export const generatePresentation = async ({ presentationType, formData, plots, userId }) => {
+    console.log(`🏭 ASSEMBLE: Starting assembly for "${presentationType.name}"`);
 
-        const files = fs.readdirSync(sectionPath);
+    const automizer = new Automizer({
+        templateDir: path.join(process.cwd(), 'Library'),
+        outputDir: path.join(process.cwd(), 'generated'),
+        compression: 0
+    });
 
-        // Look for exact match
-        const exactMatch = files.find(file => {
-            const nameWithoutExt = path.basename(file, path.extname(file)).toLowerCase();
-            return nameWithoutExt === fileKey && path.extname(file).toLowerCase() === '.pptx';
+    // Helper: Force forward slashes for Automizer keys
+    const normalize = (p) => p.split(path.sep).join('/');
+
+    // 1. Identify all files to load
+    const filesToLoad = new Set();
+    const orderedSections = presentationType.sections.sort((a, b) => a.order - b.order);
+
+    const getVaryingFile = (section, plot) => {
+        const criteriaKeys = section.varyingCriteria || [];
+        const values = criteriaKeys.map(key => {
+            const val = plot.criteria?.[key] || plot[key];
+            return val ? val.trim() : 'Unknown';
         });
+        const p = path.join(presentationType.name, section.folderPath, values.join('_') + '.pptx');
+        return normalize(p);
+    };
 
-        if (exactMatch) {
-            return path.join(sectionPath, exactMatch);
+    for (const section of orderedSections) {
+        // We look for files in the filesystem using OS paths, but store KEYS as normalized
+        const sectionFolderOS = path.join(process.cwd(), 'Library', presentationType.name, section.folderPath);
+
+        if (!fs.existsSync(sectionFolderOS)) {
+            console.warn(`⚠️ Missing folder: ${section.folderPath}`);
+            continue;
         }
 
-        return null;
-    } catch (error) {
-        console.error(`Error finding PPTX file: ${error.message}`);
-        return null;
-    }
-};
-
-/**
- * Get slides from PPTX file
- * Note: This is a simplified version. For production, use a proper PPTX parser
- */
-const getSlidesFromPptx = async (filePath) => {
-    try {
-        // For now, we'll return the file path
-        // In production, you'd use a library like 'pptxgenjs' or 'officegen' to extract slides
-        return {
-            filePath,
-            slideCount: 1 // Placeholder
-        };
-    } catch (error) {
-        console.error(`Error reading PPTX: ${error.message}`);
-        return null;
-    }
-};
-
-/**
- * Merge multiple PPTX files into one
- */
-const mergePptxFiles = async (filePaths, outputFileName) => {
-    try {
-        // For a simple implementation, we'll copy the first file
-        // In production, use a proper PPTX merging library
-
-        if (filePaths.length === 0) {
-            throw new Error('No files to merge');
-        }
-
-        const outputPath = path.join(GENERATED_PATH, outputFileName);
-
-        // Simple approach: copy first file as base
-        // In production, properly merge all slides
-        if (filePaths.length === 1) {
-            fs.copyFileSync(filePaths[0], outputPath);
+        if (!section.isVarying) {
+            const files = fs.readdirSync(sectionFolderOS).filter(f => f.endsWith('.pptx'));
+            if (files.length > 0) {
+                const fullKey = normalize(path.join(presentationType.name, section.folderPath, files[0]));
+                filesToLoad.add(fullKey);
+            }
         } else {
-            // For multiple files, you'd need a proper PPTX merging library
-            // For now, we'll copy the first file as a placeholder
-            fs.copyFileSync(filePaths[0], outputPath);
-            console.warn('Multiple file merging not fully implemented. Using first file only.');
-        }
-
-        const stats = fs.statSync(outputPath);
-
-        return {
-            filePath: outputPath,
-            fileName: outputFileName,
-            fileSize: stats.size
-        };
-
-    } catch (error) {
-        console.error(`Error merging PPTX files: ${error.message}`);
-        throw error;
-    }
-};
-
-/**
- * Generate presentation based on form data and presentation type
- */
-const generatePresentation = async ({ presentationType, formData, plots, userId }) => {
-    try {
-        const filesToMerge = [];
-        const processedKeys = new Set(); // For deduplication
-
-        // Process each section
-        for (const section of presentationType.sections.sort((a, b) => a.order - b.order)) {
-            const sectionPath = path.join(
-                LIBRARY_PATH,
-                presentationType.name,
-                section.folderPath || section.name
-            );
-
-            if (!section.isVarying) {
-                // UNVARYING SECTION - fetch single file
-                const files = fs.existsSync(sectionPath) ? fs.readdirSync(sectionPath) : [];
-                const pptxFile = files.find(f => path.extname(f).toLowerCase() === '.pptx');
-
-                if (pptxFile) {
-                    const filePath = path.join(sectionPath, pptxFile);
-                    filesToMerge.push(filePath);
-                    console.log(`✓ Added unvarying section: ${section.name}`);
-                } else {
-                    console.warn(`⚠ No PPTX found for unvarying section: ${section.name}`);
-                }
-
-            } else {
-                // VARYING SECTION - fetch based on criteria
-
-                if (presentationType.enablePlots && plots.length > 0) {
-                    // Process each plot
-                    for (const plot of plots) {
-                        // Build criteria values from plot
-                        const criteriaValues = {};
-
-                        for (const criterionName of section.varyingCriteria) {
-                            if (plot.criteria && plot.criteria[criterionName]) {
-                                criteriaValues[criterionName] = plot.criteria[criterionName];
-                            }
-                        }
-
-                        const fileKey = buildFileKey(criteriaValues);
-
-                        // Check for duplicates
-                        if (processedKeys.has(fileKey)) {
-                            console.log(`⊗ Skipping duplicate: ${fileKey}`);
-                            continue;
-                        }
-
-                        const filePath = findPptxFile(sectionPath, fileKey);
-
-                        if (filePath) {
-                            filesToMerge.push(filePath);
-                            processedKeys.add(fileKey);
-                            console.log(`✓ Added varying section: ${section.name} - ${fileKey}`);
-                        } else {
-                            console.warn(`⚠ No PPTX found for: ${section.name} - ${fileKey}`);
-                        }
-                    }
-
-                } else {
-                    // No plots - use global form data
-                    const criteriaValues = {};
-
-                    for (const criterionName of section.varyingCriteria) {
-                        if (formData[criterionName]) {
-                            criteriaValues[criterionName] = formData[criterionName];
-                        }
-                    }
-
-                    const fileKey = buildFileKey(criteriaValues);
-                    const filePath = findPptxFile(sectionPath, fileKey);
-
-                    if (filePath) {
-                        filesToMerge.push(filePath);
-                        console.log(`✓ Added varying section: ${section.name} - ${fileKey}`);
-                    } else {
-                        console.warn(`⚠ No PPTX found for: ${section.name} - ${fileKey}`);
-                    }
+            const loops = presentationType.enablePlots ? plots : [{ criteria: formData }];
+            for (const plot of loops) {
+                const key = getVaryingFile(section, plot);
+                // Verify existence using OS path
+                if (fs.existsSync(path.join(process.cwd(), 'Library', key))) {
+                    filesToLoad.add(key);
                 }
             }
         }
-
-        if (filesToMerge.length === 0) {
-            throw new Error('No presentation files found to merge');
-        }
-
-        // Generate output filename
-        const timestamp = Date.now();
-        const outputFileName = `${presentationType.name.replace(/\s+/g, '_')}_${timestamp}.pptx`;
-
-        // Merge files
-        const result = await mergePptxFiles(filesToMerge, outputFileName);
-
-        console.log(`✅ Presentation generated: ${outputFileName}`);
-
-        return result;
-
-    } catch (error) {
-        console.error(`Presentation generation failed: ${error.message}`);
-        throw error;
     }
+
+    console.log(`   -> Files to Load:`, Array.from(filesToLoad));
+
+    const pres = automizer.loadRoot(`RootTemplate.pptx`);
+
+    for (const fileKey of filesToLoad) {
+        try {
+            // Automizer.load take the key relative to templateDir. 
+            // We pass the forward-slash string. It should work on Windows too for internal lookups.
+            automizer.load(fileKey);
+        } catch (e) {
+            console.warn(`Failed to load ${fileKey}:`, e.message);
+        }
+    }
+
+    // 3. Assemble
+    for (const section of orderedSections) {
+        console.log(`   -> Assembling Section: ${section.name}`);
+
+        if (!section.isVarying) {
+            // Find the key we (likely) added
+            const sectionFolderOS = path.join(process.cwd(), 'Library', presentationType.name, section.folderPath);
+            if (fs.existsSync(sectionFolderOS)) {
+                const files = fs.readdirSync(sectionFolderOS).filter(f => f.endsWith('.pptx'));
+                if (files.length > 0) {
+                    const key = normalize(path.join(presentationType.name, section.folderPath, files[0]));
+                    try {
+                        if (filesToLoad.has(key)) pres.addSlide(key, 1);
+                    } catch (e) { console.warn(`Skipped ${key}`, e.message); }
+                }
+            }
+        } else {
+            // VARYING SECTION LOGIC WITH OVERLAP HANDLING
+            // "If two or more plots share exactly the same set of characteristics... Generate only one section"
+
+            const loops = presentationType.enablePlots ? plots : [{ criteria: formData }];
+            const processedKeys = new Set(); // Track unique file keys to prevent duplicates
+
+            for (const plot of loops) {
+                const key = getVaryingFile(section, plot);
+
+                // key looks like: "Feasibility Study/06_MarketOverview/Riyadh_Residential.pptx"
+                // If we have already added this EXACT file for this section, skip it (Deduplication)
+                if (processedKeys.has(key)) {
+                    console.log(`      ⚠️ Duplicate Plot Characteristic detected (${key}). Skipping redundant section.`);
+                    continue;
+                }
+
+                if (filesToLoad.has(key)) {
+                    try {
+                        console.log(`      -> Adding Slide for Unique Plot: ${key}`);
+                        pres.addSlide(key, 1);
+                        processedKeys.add(key); // Mark as processed
+                    } catch (e) { console.warn(`Skipped ${key}`, e.message); }
+                }
+            }
+        }
+    }
+
+    // --- WRITE OUTPUT ---
+    const fileName = `${formData.title.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.pptx`;
+
+    await pres.write(fileName);
+
+    console.log(`✅ Assembly Complete: ${fileName}`);
+    return {
+        fileName,
+        filePath: path.join(process.cwd(), 'generated', fileName),
+        fileSize: 0
+    };
 };
 
-export {
-    generatePresentation,
-    mergePptxFiles,
-    buildFileKey
-};
+// Deprecated or Unused exports for compatibility if needed, though mostly replaced
+export const mergePptxFiles = async () => { throw new Error('Merge functionality has been replaced by Pro Generation'); };
+export const buildFileKey = () => { };

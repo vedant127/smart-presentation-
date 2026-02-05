@@ -11,6 +11,7 @@ import presentationTypeRoutes from './routes/presentationTypeRoutes.js';
 import presentationRoutes from './routes/presentationRoutes.js';
 import fileRoutes from './routes/fileRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import libraryRoutes from './routes/libraryRoutes.js';
 
 // Load environment variables
 dotenv.config();

@@ -4,7 +4,9 @@ import {
     getHistory,
     getHistoryItem,
     download,
-    deleteHistory
+    deleteHistory,
+    createAndDownload,
+
 } from '../controllers/presentationController.js';
 import { authenticate } from '../middleware/auth.js';
 import { validateObjectId } from '../middleware/validation.js';
@@ -15,13 +17,18 @@ const router = express.Router();
  * Presentation Generation Routes
  */
 
+// @route   POST /api/presentations/create-download
+// @desc    Generate and immediately download presentation
+// @access  Public
+router.post('/create-download', createAndDownload);
+
 // All routes require authentication
 router.use(authenticate);
 
-// @route   POST /api/presentations/generate
-// @desc    Generate presentation
+// @route   POST /api/presentations/create-pro
+// @desc    Generate a Professional AI-Designed PPTX (Gamma.ai style)
 // @access  Private
-router.post('/generate', generate);
+// createPro route removed
 
 // @route   GET /api/presentations/history
 // @desc    Get presentation history

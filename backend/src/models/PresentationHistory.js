@@ -21,7 +21,7 @@ const presentationHistorySchema = new mongoose.Schema({
     },
     formData: {
         type: mongoose.Schema.Types.Mixed,
-        required: true
+        default: {}
     },
     plots: [{
         plotNumber: Number,
