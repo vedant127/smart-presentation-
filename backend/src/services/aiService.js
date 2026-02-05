@@ -1,76 +1,104 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
 /**
  * AI Content Generation Service
- * Uses Google Gemini to generate dynamic business content for presentations.
+ * Supports Google Gemini (Primary) and OpenAI (Fallback)
  */
 
-// Initialize Gemini
-// Note: Ensure GEMINI_API_KEY is in your .env file
-const getModel = () => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        console.warn("⚠️ GEMINI_API_KEY is missing. Using fallback content.");
-        return null;
-    }
-    return new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: "gemini-1.5-flash" });
+const getGeminiModel = () => {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) return null;
+    return new GoogleGenerativeAI(key).getGenerativeModel({ model: "gemini-1.5-flash" });
 };
 
-/**
- * Generates structured content for the feasibility study based on the topic.
- * @param {string} topic - The main title/topic of the presentation
- * @param {string} subtitle - Optional context
- * @returns {Promise<Object>} JSON object with text content
- */
-export const generateSlideContent = async (topic, subtitle = '') => {
-    const model = getModel();
-    if (!model) return null; // Trigger fallback
+const getOpenAIClient = () => {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return null;
+    return new OpenAI({ apiKey: key });
+};
 
+export const generateSlideContent = async (title, subtitle, sections, formData) => {
+    const sectionNames = sections.map(s => s.name).join(', ');
+    const userDetails = JSON.stringify(formData);
+
+    // Unified Prompt - Enhanced for Specificity
     const prompt = `
-    Act as a senior business analyst. Create content for a Professional Feasibility Study Presentation.
+    Act as a senior business consultant at AIRE Software. 
+    Create a highly detailed, project-specific business presentation JSON object.
+
+    CONTEXT:
+    - Title: "${title}"
+    - Subtitle: "${subtitle}"
+    - User/Company Data: ${userDetails}
     
-    Project Title: "${topic}"
-    Context/Subtitle: "${subtitle}"
+    INSTRUCTIONS:
+    For EACH of the following sections, generate unique, specific, and realistic content. 
+    DO NOT use generic phrases like "Comprehensive analysis reveals". 
+    Actually write the analysis based on the context provided above.
+    
+    Required Sections: ${sectionNames}
 
-    Return ONLY a purely valid JSON object (no markdown, no backticks) with the following specific fields:
-
+    GUIDELINES:
+    1. "body": Write 2-3 detailed paragraphs (approx 150 words) specific to this project's industry and location.
+    2. "points": Provide 3-4 concrete, data-driven bullet points (use %, $, or specific metrics).
+    3. For "Financial Investment Analysis", strictly return a "table" array: [["Category", "Cost", "Notes"], ["Item A", "$X", "..."], ...].
+    
+    CRITICAL OUTPUT FORMAT:
+    Return ONLY a purely valid JSON object (no markdown) with keys matching the provided section names EXACTLY.
+    
+    Structure Example:
     {
-        "title_slide": {
-            "subtitle": "A professional, concise subtitle for this project (max 8 words)"
+        "${sectionNames.split(', ')[0]}": { 
+             "body": "Specifically regarding ${title}, we observed...", 
+             "points": ["Market grew by 12% in...", "Competitor X holds 20% share"] 
         },
-        "executive_summary": {
-            "market_opportunity_title": "Market Opportunity",
-            "market_opportunity_text": "Write 3 professional sentences analyzing the market potential for this specific topic. Focus on growth trends and demand.",
-            "recommendation_title": "Strategic Recommendation",
-            "recommendation_text": "Write 3 professional sentences recommending a specific strategy or approach for this project. Mention a competitive advantage.",
-            "kpis": [
-                { "label": "Projected ROI", "value": "XX%" },
-                { "label": "Est. Revenue", "value": "$X.X M" },
-                { "label": "Breakeven", "value": "X Years" },
-                { "label": "Risk Level", "value": "Low/Med" }
-            ]
-        },
-        "market_projections": {
-            "chart_title": "Projected Growth Analysis",
-            "chart_insight": "A one-sentence insight about the chart data."
-        }
+        ...
     }
-    
-    Ensure the data is realistic for the given topic. The KPIs should look professional.
     `;
 
-    try {
-        console.log(`🤖 Asking Gemini to generate content for: ${topic}...`);
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        // simple cleanup to ensure valid JSON
-        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
-        return JSON.parse(cleanedText);
-    } catch (error) {
-        console.error("❌ AI Generation Failed:", error.message);
-        return null;
+    // 1. Try Gemini
+    const gemini = getGeminiModel();
+    if (gemini) {
+        try {
+            console.log(`🤖 [Gemini] Generating content for: ${title}...`);
+            const result = await gemini.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            console.log(`✅ [Gemini] Success. Content length: ${cleaned.length}`);
+            return JSON.parse(cleaned);
+        } catch (error) {
+            console.error("❌ [Gemini] Failed:", error.message);
+            // Fallthrough to OpenAI
+        }
+    } else {
+        console.log("ℹ️ [Gemini] Skipped (Key missing).");
     }
+
+    // 2. Try OpenAI
+    const openai = getOpenAIClient();
+    if (openai) {
+        try {
+            console.log(`🤖 [OpenAI] Generating content for: ${title}...`);
+            const response = await openai.chat.completions.create({
+                model: "gpt-4-turbo-preview", // or gpt-3.5-turbo
+                messages: [
+                    { role: "system", content: "You are a specialized JSON generator for business presentations." },
+                    { role: "user", content: prompt }
+                ],
+                response_format: { type: "json_object" }
+            });
+            const text = response.choices[0].message.content;
+            console.log(`✅ [OpenAI] Success. Content length: ${text.length}`);
+            return JSON.parse(text);
+        } catch (error) {
+            console.error("❌ [OpenAI] Failed:", error.message);
+        }
+    } else {
+        console.log("ℹ️ [OpenAI] Skipped (Key missing).");
+    }
+
+    console.warn("⚠️ All AI providers failed. Returning empty content.");
+    return {};
 };

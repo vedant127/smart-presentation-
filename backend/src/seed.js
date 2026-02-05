@@ -150,6 +150,30 @@ const seedData = async () => {
 
         console.log('✅ Feasibility Study created');
 
+        console.log('\n📊 Creating Business Analysis presentation type...');
+        await PresentationType.create({
+            name: 'Business Analysis',
+            description: 'Professional business analysis including market trends and strategy',
+            enablePlots: false,
+            criteria: [
+                { name: 'Client Name', type: 'single', options: [], required: true },
+                { name: 'Target Market', type: 'single', options: [], required: true }
+            ],
+            sections: [
+                { name: 'Executive Summary', order: 1, isVarying: false },
+                { name: 'Market Analysis', order: 2, isVarying: false },
+                { name: 'Competitor Landscape', order: 3, isVarying: false },
+                { name: 'Strategic Recommendations', order: 4, isVarying: false },
+                { name: 'Financial Projections', order: 5, isVarying: false },
+                { name: 'Next Steps', order: 6, isVarying: false }
+            ],
+            createdBy: admin._id,
+            isActive: true
+        });
+        console.log('✅ Business Analysis created');
+
+        console.log('✅ Feasibility Study created');
+
         console.log('\n✅ Database seeding completed successfully!\n');
         console.log('📝 Admin Credentials:');
         console.log('   Email: admin@smartpresentation.com');
