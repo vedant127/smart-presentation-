@@ -1,6 +1,7 @@
 import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
 import { generatePresentation } from '../services/presentationService.js';
+import { selectSlides } from '../services/slideSelectionService.js';
 
 
 /**
@@ -273,6 +274,47 @@ const deleteHistory = async (req, res, next) => {
     }
 };
 
+/**
+ * @route   POST /api/presentations/generate-selection
+ * @desc    Select appropriate slides based on user input
+ * @access  Private
+ */
+const generateSelection = async (req, res, next) => {
+    try {
+        // STEP 1: Get user input from frontend form
+        const {
+            city,              // "Mumbai"
+            projectType,       // "Residential"
+            requirements,      // ["Financial Analysis", "Market Analysis"]
+            companyName,
+            projectTitle
+        } = req.body;
+
+        console.log('User requested presentation for:', {
+            city,
+            projectType,
+            requirements
+        });
+
+        // STEP 2: Select appropriate slides
+        const selectedSlides = selectSlides(city, requirements, projectType);
+
+        console.log(`Selected ${selectedSlides.length} slides:`,
+            selectedSlides.map(s => s.title)
+        );
+
+        // STEP 3: Return the selection
+        res.json({
+            success: true,
+            selectedSlides: selectedSlides,
+            totalSlides: selectedSlides.length
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
 export {
     generate,
     getHistory,
@@ -280,6 +322,7 @@ export {
     download,
     deleteHistory,
     createAndDownload,
+    generateSelection,
 
 };
 
@@ -316,12 +359,33 @@ const createAndDownload = async (req, res, next) => {
         const guestId = '000000000000000000000000';
         const userId = req.user ? req.user._id : guestId;
 
+        // --- NEW: SLIDE SELECTION INTEGRATION ---
+        // Extract criteria from the first plot (since we're generating one cohesive report)
+        // or prioritize formData if available globally
+        let selectedSlides = [];
+
+        // Try getting criteria from plots[0] (the primary plot logic)
+        const primaryPlot = (plots && plots.length > 0) ? plots[0] : null;
+        const criteria = primaryPlot ? (primaryPlot.criteria || primaryPlot.data || {}) : formData;
+
+        const city = criteria.city || formData.city || "Mumbai"; // Default fallback
+        const projectType = criteria.assetType || criteria.projectType || "Residential";
+        // Requirements: map 'category' or explicit requirements array
+        let requirements = criteria.requirements || [];
+        if (criteria.category && !requirements.includes(criteria.category)) {
+            requirements.push(criteria.category);
+        }
+
+        console.log(`[CreateDownload] Selecting slides for: City=${city}, Type=${projectType}, Reqs=${requirements}`);
+        selectedSlides = selectSlides(city, requirements, projectType);
+
         // Generate presentation
         const result = await generatePresentation({
             presentationType,
             formData,
             plots: plots || [],
-            userId: userId
+            userId: userId,
+            selectedSlides // Pass the selected slides to the service
         });
 
         // Save to history (optional but good for tracking)

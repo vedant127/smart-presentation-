@@ -1,0 +1,103 @@
+{
+    "slideLibrary": [
+        {
+            "id": "FIN_MUM_001",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "Investment Assumptions - Mumbai",
+            "city": "Mumbai",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "assumptions",
+                "investment"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{Budget}}"
+            ]
+        },
+        {
+            "id": "MKT_MUM_001",
+            "sourceFile": "Jeddah_Retail.pptx",
+            "slideNumber": 1,
+            "title": "Mumbai Market Overview",
+            "city": "Mumbai",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "market",
+                "Mumbai"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{MarketSize}}"
+            ]
+        },
+        {
+            "id": "FIN_DEL_001",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 2,
+            "title": "Investment Assumptions - Delhi",
+            "city": "Delhi",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Commercial",
+                "Retail"
+            ],
+            "tags": [
+                "assumptions",
+                "Delhi rates"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{Budget}}"
+            ]
+        },
+        {
+            "id": "MKT_BLR_001",
+            "sourceFile": "Jeddah_Retail.pptx",
+            "slideNumber": 2,
+            "title": "Bangalore Market Overview",
+            "city": "Bangalore",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Residential",
+                "Tech Parks"
+            ],
+            "tags": [
+                "market",
+                "Bangalore"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{MarketSize}}"
+            ]
+        },
+        {
+            "id": "BG_GEN_001",
+            "sourceFile": "background.pptx",
+            "slideNumber": 1,
+            "title": "Project Background",
+            "city": "Mumbai",
+            "category": "Introduction",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "background"
+            ],
+            "placeholders": [
+                "{{ProjectName}}"
+            ]
+        }
+    ]
+}

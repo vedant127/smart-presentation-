@@ -6,6 +6,7 @@ import {
     download,
     deleteHistory,
     createAndDownload,
+    generateSelection,
 
 } from '../controllers/presentationController.js';
 import { authenticate } from '../middleware/auth.js';
@@ -21,6 +22,11 @@ const router = express.Router();
 // @desc    Generate and immediately download presentation
 // @access  Public
 router.post('/create-download', createAndDownload);
+
+// @route   POST /api/presentations/generate-presentation
+// @desc    Select appropriate slides based on user input
+// @access  Public
+router.post('/generate-presentation', generateSelection);
 
 // All routes require authentication
 router.use(authenticate);

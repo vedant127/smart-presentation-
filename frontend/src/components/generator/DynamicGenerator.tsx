@@ -84,10 +84,25 @@ export const DynamicGenerator = () => {
                 presentationTypeId: selectedTypeId,
                 formData: {
                     ...formData,
+                    // EXPLICIT MAPPING FOR SLIDE SELECTION
+                    // These fields ensure the backend 'selectSlides' logic finds what it needs
+                    city: formData.City || formData.city || "Mumbai",
+                    projectType: formData.AssetType || formData.assetType || "Residential",
+                    category: formData.Category || formData.category,
+                    requirements: formData.Category ? [formData.Category] : (formData.requirements || []),
+
                     // Flatten plot Count for naive templates
                     plotCount: plots.length
                 },
-                plots: schema.enablePlots ? plots.map(p => ({ criteria: p.data })) : []
+                plots: schema.enablePlots ? plots.map(p => ({
+                    criteria: {
+                        ...p.data,
+                        // Also map inside plot criteria for robustness
+                        city: p.data.City || p.data.city,
+                        projectType: p.data.AssetType || p.data.assetType,
+                        category: p.data.Category || p.data.category
+                    }
+                })) : []
             };
 
             const response = await axios.post('http://localhost:5000/api/presentations/create-download', payload, {
