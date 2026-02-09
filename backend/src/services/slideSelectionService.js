@@ -1,4 +1,3 @@
-
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const slideLibrary = require('./slideLibrary.json');
@@ -14,16 +13,27 @@ const slideLibrary = require('./slideLibrary.json');
  */
 export const selectSlides = (city, requirements, projectType) => {
 
-    console.log(`Selecting slides for: City=${city}, Requirements=${requirements}, Type=${projectType}`);
+    console.log(`\n========================================`);
+    console.log(`🔍 SLIDE SELECTION STARTED`);
+    console.log(`========================================`);
+    console.log(`📍 City: ${city}`);
+    console.log(`📋 Requirements: ${JSON.stringify(requirements)}`);
+    console.log(`🏢 Project Type: ${projectType}`);
+    console.log(`========================================\n`);
 
     const library = slideLibrary.slideLibrary || [];
+    console.log(`📚 Total slides in library: ${library.length}`);
 
     // STEP 1: Filter by city
     let filteredSlides = library.filter(slide => {
         return slide.city === city;
     });
 
-    console.log(`After city filter: ${filteredSlides.length} slides`);
+    console.log(`\n✅ STEP 1: City Filter (${city})`);
+    console.log(`   Found ${filteredSlides.length} slides for ${city}`);
+    if (filteredSlides.length > 0) {
+        console.log(`   Slides: ${filteredSlides.map(s => s.id).join(', ')}`);
+    }
 
     // STEP 2: Filter by category (requirements)
     if (requirements && requirements.length > 0) {
@@ -31,9 +41,13 @@ export const selectSlides = (city, requirements, projectType) => {
             // Check if the slide's category is in the requirements list
             return requirements.includes(slide.category);
         });
-    }
 
-    console.log(`After requirement filter: ${filteredSlides.length} slides`);
+        console.log(`\n✅ STEP 2: Requirements Filter`);
+        console.log(`   Found ${filteredSlides.length} slides matching requirements`);
+        if (filteredSlides.length > 0) {
+            console.log(`   Slides: ${filteredSlides.map(s => `${s.id} (${s.category})`).join(', ')}`);
+        }
+    }
 
     // STEP 3: Filter by project type
     if (projectType) {
@@ -42,9 +56,13 @@ export const selectSlides = (city, requirements, projectType) => {
             // Some slides might support multiple types e.g. ["Residential", "Commercial"]
             return slide.projectTypes.includes(projectType);
         });
-    }
 
-    console.log(`After project type filter: ${filteredSlides.length} slides`);
+        console.log(`\n✅ STEP 3: Project Type Filter (${projectType})`);
+        console.log(`   Found ${filteredSlides.length} slides for ${projectType}`);
+        if (filteredSlides.length > 0) {
+            console.log(`   Slides: ${filteredSlides.map(s => `${s.id} (${s.projectTypes.join('/')})`).join(', ')}`);
+        }
+    }
 
     // STEP 4: Sort by relevance (most relevant first)
     filteredSlides.sort((a, b) => {
@@ -58,6 +76,16 @@ export const selectSlides = (city, requirements, projectType) => {
 
         return 0;
     });
+
+    console.log(`\n========================================`);
+    console.log(`📊 FINAL SELECTION: ${filteredSlides.length} slides`);
+    console.log(`========================================`);
+    filteredSlides.forEach((slide, index) => {
+        console.log(`${index + 1}. [${slide.id}] ${slide.title}`);
+        console.log(`   📄 Source: ${slide.sourceFile} (Slide #${slide.slideNumber})`);
+        console.log(`   🏙️  City: ${slide.city} | 🏢 Type: ${slide.projectTypes.join(', ')} | 📂 Category: ${slide.category}`);
+    });
+    console.log(`========================================\n`);
 
     return filteredSlides;
 }

@@ -1,50 +1,380 @@
 {
     "slideLibrary": [
         {
-            "id": "FIN_MUM_001",
+            "id": "FIN_MUM_RES_001",
             "sourceFile": "financial.pptx",
             "slideNumber": 1,
-            "title": "Investment Assumptions - Mumbai",
+            "title": "Investment Assumptions - Mumbai Residential",
             "city": "Mumbai",
             "category": "Financial Analysis",
             "projectTypes": [
-                "Residential",
-                "Commercial"
+                "Residential"
             ],
             "tags": [
                 "assumptions",
-                "investment"
+                "investment",
+                "Mumbai",
+                "residential"
             ],
             "hasTable": true,
             "placeholders": [
                 "{{ProjectName}}",
-                "{{Budget}}"
+                "{{City}}",
+                "{{AssetType}}"
             ]
         },
         {
-            "id": "MKT_MUM_001",
-            "sourceFile": "Jeddah_Retail.pptx",
+            "id": "FIN_MUM_COM_001",
+            "sourceFile": "financial.pptx",
             "slideNumber": 1,
-            "title": "Mumbai Market Overview",
+            "title": "Investment Assumptions - Mumbai Commercial",
             "city": "Mumbai",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Commercial"
+            ],
+            "tags": [
+                "assumptions",
+                "investment",
+                "Mumbai",
+                "commercial"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "FIN_MUM_RES_002",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "Cash Flow Analysis - Mumbai Residential",
+            "city": "Mumbai",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "cash flow",
+                "Mumbai",
+                "residential"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "FIN_MUM_COM_002",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "ROI Analysis - Mumbai Commercial",
+            "city": "Mumbai",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Commercial"
+            ],
+            "tags": [
+                "ROI",
+                "Mumbai",
+                "commercial"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "MKT_BLR_RES_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Residential Market Overview",
+            "city": "Bangalore",
             "category": "Market Analysis",
             "projectTypes": [
                 "Residential"
             ],
             "tags": [
                 "market",
-                "Mumbai"
+                "Bangalore",
+                "residential",
+                "apartments"
             ],
             "hasChart": true,
             "placeholders": [
-                "{{MarketSize}}"
+                "{{City}}",
+                "{{AssetType}}"
             ]
         },
         {
-            "id": "FIN_DEL_001",
+            "id": "MKT_BLR_COM_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Commercial Market Trends",
+            "city": "Bangalore",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Commercial"
+            ],
+            "tags": [
+                "market",
+                "Bangalore",
+                "commercial",
+                "office"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "MKT_BLR_RES_002",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Demographics - Residential",
+            "city": "Bangalore",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "demographics",
+                "Bangalore",
+                "residential"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "MKT_BLR_COM_002",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Tech Park Demand",
+            "city": "Bangalore",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Commercial"
+            ],
+            "tags": [
+                "tech parks",
+                "Bangalore",
+                "commercial",
+                "IT"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "FIN_BLR_RES_001",
             "sourceFile": "financial.pptx",
-            "slideNumber": 2,
-            "title": "Investment Assumptions - Delhi",
+            "slideNumber": 1,
+            "title": "Investment Assumptions - Bangalore Residential",
+            "city": "Bangalore",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "assumptions",
+                "investment",
+                "Bangalore",
+                "residential"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "FIN_BLR_COM_001",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "Investment Assumptions - Bangalore Commercial",
+            "city": "Bangalore",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Commercial"
+            ],
+            "tags": [
+                "assumptions",
+                "investment",
+                "Bangalore",
+                "commercial"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "FIN_BLR_RES_002",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "Cash Flow Projections - Bangalore Residential",
+            "city": "Bangalore",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "cash flow",
+                "Bangalore",
+                "residential"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "FIN_BLR_COM_002",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "ROI Analysis - Bangalore Commercial",
+            "city": "Bangalore",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Commercial"
+            ],
+            "tags": [
+                "ROI",
+                "Bangalore",
+                "commercial"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "MKT_DEL_RES_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Residential Market Overview",
+            "city": "Delhi",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "market",
+                "Delhi",
+                "residential"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "MKT_DEL_COM_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Commercial Market Trends",
+            "city": "Delhi",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Commercial",
+                "Retail"
+            ],
+            "tags": [
+                "market",
+                "Delhi",
+                "commercial"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "MKT_DEL_RES_002",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Demographics - Residential",
+            "city": "Delhi",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "demographics",
+                "Delhi",
+                "residential"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "MKT_DEL_MIX_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Mixed-Use Development Trends",
+            "city": "Delhi",
+            "category": "Market Analysis",
+            "projectTypes": [
+                "Mixed-Use"
+            ],
+            "tags": [
+                "mixed-use",
+                "Delhi",
+                "retail",
+                "office"
+            ],
+            "hasChart": true,
+            "placeholders": [
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "FIN_DEL_RES_001",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "Investment Assumptions - Delhi Residential",
+            "city": "Delhi",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Residential"
+            ],
+            "tags": [
+                "assumptions",
+                "investment",
+                "Delhi",
+                "residential"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}",
+                "{{AssetType}}"
+            ]
+        },
+        {
+            "id": "FIN_DEL_COM_001",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "Investment Assumptions - Delhi Commercial",
             "city": "Delhi",
             "category": "Financial Analysis",
             "projectTypes": [
@@ -53,50 +383,183 @@
             ],
             "tags": [
                 "assumptions",
-                "Delhi rates"
+                "investment",
+                "Delhi",
+                "commercial"
             ],
             "hasTable": true,
             "placeholders": [
                 "{{ProjectName}}",
-                "{{Budget}}"
+                "{{City}}",
+                "{{AssetType}}"
             ]
         },
         {
-            "id": "MKT_BLR_001",
-            "sourceFile": "Jeddah_Retail.pptx",
-            "slideNumber": 2,
-            "title": "Bangalore Market Overview",
-            "city": "Bangalore",
-            "category": "Market Analysis",
+            "id": "FIN_DEL_RES_002",
+            "sourceFile": "financial.pptx",
+            "slideNumber": 1,
+            "title": "Cash Flow Analysis - Delhi Residential",
+            "city": "Delhi",
+            "category": "Financial Analysis",
             "projectTypes": [
-                "Residential",
-                "Tech Parks"
+                "Residential"
             ],
             "tags": [
-                "market",
-                "Bangalore"
+                "cash flow",
+                "Delhi",
+                "residential"
             ],
-            "hasChart": true,
+            "hasTable": true,
             "placeholders": [
-                "{{MarketSize}}"
+                "{{ProjectName}}",
+                "{{City}}"
             ]
         },
         {
-            "id": "BG_GEN_001",
-            "sourceFile": "background.pptx",
+            "id": "FIN_DEL_MIX_001",
+            "sourceFile": "financial.pptx",
             "slideNumber": 1,
-            "title": "Project Background",
+            "title": "Financial Model - Delhi Mixed-Use",
+            "city": "Delhi",
+            "category": "Financial Analysis",
+            "projectTypes": [
+                "Mixed-Use"
+            ],
+            "tags": [
+                "financial model",
+                "Delhi",
+                "mixed-use"
+            ],
+            "hasTable": true,
+            "placeholders": [
+                "{{ProjectName}}",
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "SITE_MUM_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Mumbai Location Analysis",
             "city": "Mumbai",
-            "category": "Introduction",
+            "category": "Site Assessment",
             "projectTypes": [
                 "Residential",
                 "Commercial"
             ],
             "tags": [
-                "background"
+                "location",
+                "Mumbai",
+                "connectivity"
             ],
             "placeholders": [
+                "{{City}}",
                 "{{ProjectName}}"
+            ]
+        },
+        {
+            "id": "SITE_MUM_002",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Mumbai Regulatory Framework",
+            "city": "Mumbai",
+            "category": "Site Assessment",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "regulations",
+                "Mumbai",
+                "RERA",
+                "FSI"
+            ],
+            "placeholders": [
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "SITE_BLR_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Location Analysis",
+            "city": "Bangalore",
+            "category": "Site Assessment",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "location",
+                "Bangalore",
+                "connectivity"
+            ],
+            "placeholders": [
+                "{{City}}",
+                "{{ProjectName}}"
+            ]
+        },
+        {
+            "id": "SITE_BLR_002",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Regulatory Framework",
+            "city": "Bangalore",
+            "category": "Site Assessment",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "regulations",
+                "Bangalore",
+                "BDA",
+                "BBMP"
+            ],
+            "placeholders": [
+                "{{City}}"
+            ]
+        },
+        {
+            "id": "SITE_DEL_001",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Location Analysis",
+            "city": "Delhi",
+            "category": "Site Assessment",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "location",
+                "Delhi",
+                "connectivity"
+            ],
+            "placeholders": [
+                "{{City}}",
+                "{{ProjectName}}"
+            ]
+        },
+        {
+            "id": "SITE_DEL_002",
+            "sourceFile": "riyadh + residential + apartments + luxury.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Regulatory Framework",
+            "city": "Delhi",
+            "category": "Site Assessment",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "regulations",
+                "Delhi",
+                "DDA",
+                "MCD"
+            ],
+            "placeholders": [
+                "{{City}}"
             ]
         }
     ]

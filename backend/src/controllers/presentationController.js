@@ -368,15 +368,31 @@ const createAndDownload = async (req, res, next) => {
         const primaryPlot = (plots && plots.length > 0) ? plots[0] : null;
         const criteria = primaryPlot ? (primaryPlot.criteria || primaryPlot.data || {}) : formData;
 
+
         const city = criteria.city || formData.city || "Mumbai"; // Default fallback
-        const projectType = criteria.assetType || criteria.projectType || "Residential";
+        const projectType = criteria.assetType || criteria.projectType || formData.projectType || "Residential";
+
         // Requirements: map 'category' or explicit requirements array
-        let requirements = criteria.requirements || [];
+        let requirements = formData.requirements || criteria.requirements || [];
+
+        // Ensure requirements is an array
+        if (!Array.isArray(requirements)) {
+            requirements = [requirements];
+        }
+
+        // Add category if specified
         if (criteria.category && !requirements.includes(criteria.category)) {
             requirements.push(criteria.category);
         }
+        if (formData.category && !requirements.includes(formData.category)) {
+            requirements.push(formData.category);
+        }
 
-        console.log(`[CreateDownload] Selecting slides for: City=${city}, Type=${projectType}, Reqs=${requirements}`);
+        console.log(`\n[CreateDownload] Slide Selection Parameters:`);
+        console.log(`   City: ${city}`);
+        console.log(`   Project Type: ${projectType}`);
+        console.log(`   Requirements: ${JSON.stringify(requirements)}`);
+
         selectedSlides = selectSlides(city, requirements, projectType);
 
         // Generate presentation
@@ -410,6 +426,8 @@ const createAndDownload = async (req, res, next) => {
         res.download(result.filePath, result.fileName);
 
     } catch (error) {
+        console.error('\n[CreateDownload] ERROR:', error.message);
+        console.error('Stack:', error.stack);
         next(error);
     }
 };
