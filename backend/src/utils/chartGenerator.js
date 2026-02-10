@@ -26,10 +26,10 @@ export const addROIChart = (slide, city, projectType, data) => {
 
     // Add bar chart - POSITIONED ON RIGHT SIDE
     slide.addChart('bar', chartData, {
-        x: 5.5,      // RIGHT side (table is on left 0.5-5.0)
-        y: 1.5,      // Below title
-        w: 4.0,      // Narrower to fit right side
-        h: 4.0,      // Same height as table
+        x: 5.2,      // RIGHT side (table ends at ~5.0)
+        y: 2.2,      // Aligned with table top
+        w: 4.3,      // Wider to use available space
+        h: 3.5,      // Taller for better visibility
         chartColors: ['234874'],
         showLegend: false,  // No legend needed (single series)
         showTitle: false,
@@ -115,19 +115,23 @@ export const addMarketGrowthChart = (slide, city, projectType) => {
     // Add area chart - POSITIONED BELOW TEXT CONTENT
     slide.addChart('area', chartData, {
         x: 0.5,      // Left aligned
-        y: 4.5,      // BELOW market content (content ends ~4.0)
+        y: 4.3,      // ✅ MOVED UP (was 4.5)
         w: 9.0,      // Full width
-        h: 2.5,      // Shorter height to fit below
+        h: 2.2,      // ✅ REDUCED height (was 2.5) - ends at 6.5"
         chartColors: ['27AE60'],
         showLegend: true,
         legendPos: 'r',  // Legend on right
-        showTitle: false,
+        showTitle: false,  // ✅ No chart title
+        title: '',  // ✅ Empty title
+        chartArea: { fill: { color: 'FFFFFF' } },  // ✅ White chart area
+        plotArea: { fill: { color: 'FFFFFF' } },  // ✅ White plot area
         valAxisMaxVal: 1600,
         valAxisMinVal: 800,
-        catAxisLabelFontSize: 11,
-        valAxisLabelFontSize: 11,
-        dataLabelFontSize: 10,
-        showValue: false
+        catAxisLabelFontSize: 10,  // ✅ SMALLER (was 11)
+        valAxisLabelFontSize: 10,  // ✅ SMALLER (was 11)
+        dataLabelFontSize: 9,  // ✅ SMALLER (was 10)
+        showValue: false,
+        border: { pt: 0 }  // ✅ No border
     });
 
     console.log(`✅ Added Market Growth chart for ${city} ${projectType}`);
@@ -170,3 +174,126 @@ export const addInvestmentBreakdownChart = (slide, city, projectType, data) => {
 
     console.log(`✅ Added Investment Breakdown chart for ${city} ${projectType}`);
 };
+
+/**
+ * Add Supply Analysis Chart (NEW!)
+ * Shows current supply vs pipeline projects
+ * Clustered bar chart
+ */
+export const addSupplyChart = (slide, city, projectType) => {
+    // Supply data for chart
+    const chartData = [
+        {
+            name: 'Current Supply',
+            labels: ['Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024', 'Q1 2025'],
+            values: [850, 920, 1050, 1180, 1320]
+        },
+        {
+            name: 'Pipeline Projects',
+            labels: ['Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024', 'Q1 2025'],
+            values: [450, 520, 680, 820, 950]
+        }
+    ];
+
+    // Add clustered bar chart - POSITIONED BELOW CONTENT
+    slide.addChart('bar', chartData, {
+        x: 0.5,
+        y: 4.3,      // BELOW content (adjusted)
+        w: 9.0,      // Full width
+        h: 2.2,      // REDUCED to fit (was 2.5)
+        chartColors: ['234874', '3498DB'],
+        showLegend: true,
+        legendPos: 't',  // Legend at top
+        showTitle: false,
+        barGrouping: 'clustered',
+        valAxisMaxVal: 1500,
+        valAxisMinVal: 0,
+        catAxisLabelFontSize: 10,
+        valAxisLabelFontSize: 10,
+        dataLabelFontSize: 9,
+        showValue: true
+    });
+
+    console.log(`✅ Added Supply Analysis chart for ${city} ${projectType}`);
+};
+
+/**
+ * Add Demand Trends Chart (NEW!)
+ * Shows demand growth over time
+ * Line chart with markers
+ */
+export const addDemandChart = (slide, city, projectType) => {
+    // Demand data for chart
+    const chartData = [
+        {
+            name: 'Demand (Units)',
+            labels: ['2020', '2021', '2022', '2023', '2024', '2025'],
+            values: [1200, 1450, 1680, 1920, 2180, 2450]
+        },
+        {
+            name: 'Absorption Rate (%)',
+            labels: ['2020', '2021', '2022', '2023', '2024', '2025'],
+            values: [65, 72, 78, 82, 85, 88]
+        }
+    ];
+
+    // Add line chart - POSITIONED BELOW CONTENT
+    slide.addChart('line', chartData, {
+        x: 0.5,
+        y: 4.3,      // BELOW content (adjusted)
+        w: 9.0,      // Full width
+        h: 2.2,      // REDUCED to fit (was 2.5)
+        chartColors: ['27AE60', 'F39C12'],
+        showLegend: true,
+        legendPos: 't',  // Legend at top
+        showTitle: false,
+        valAxisMaxVal: 2600,
+        valAxisMinVal: 0,
+        catAxisLabelFontSize: 10,
+        valAxisLabelFontSize: 10,
+        dataLabelFontSize: 9,
+        showValue: false,
+        lineDataSymbol: 'circle',
+        lineDataSymbolSize: 5,
+        lineSmooth: true
+    });
+
+    console.log(`✅ Added Demand Trends chart for ${city} ${projectType}`);
+};
+
+/**
+ * Add Price Trends Chart (NEW!)
+ * Shows price appreciation over time
+ * Area chart showing growth
+ */
+export const addPriceTrendsChart = (slide, city, projectType) => {
+    // Price trends data
+    const chartData = [
+        {
+            name: 'Average Price (₹/sq ft)',
+            labels: ['2020', '2021', '2022', '2023', '2024', '2025'],
+            values: [8500, 9200, 10100, 11300, 12800, 14500]
+        }
+    ];
+
+    // Add area chart - POSITIONED BELOW CONTENT
+    slide.addChart('area', chartData, {
+        x: 0.5,
+        y: 4.3,      // BELOW content (adjusted)
+        w: 9.0,      // Full width
+        h: 2.2,      // REDUCED to fit (was 2.5)
+        chartColors: ['E74C3C'],
+        showLegend: true,
+        legendPos: 't',  // Legend at top
+        showTitle: false,
+        valAxisMaxVal: 16000,
+        valAxisMinVal: 8000,
+        catAxisLabelFontSize: 10,
+        valAxisLabelFontSize: 10,
+        dataLabelFontSize: 9,
+        showValue: false
+    });
+
+    console.log(`Added Price Trends chart for ${city} ${projectType}`);
+};
+

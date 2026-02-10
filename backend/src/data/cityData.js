@@ -122,14 +122,40 @@ export const cityData = {
 
 // Get city-specific data
 export const getCityData = (city, projectType) => {
-    const cityInfo = cityData[city];
-    if (!cityInfo) return null;
+    // FIX: Auto-correct common city name typos
+    const cityCorrections = {
+        'Bangaloree': 'Bangalore',
+        'Banglore': 'Bangalore',
+        'Bengaluru': 'Bangalore',
+        'Mumbay': 'Mumbai',
+        'Bombay': 'Mumbai',
+        'Dehli': 'Delhi',
+        'Dilli': 'Delhi'
+    };
+
+    // Correct the city name if it's a known typo
+    const correctedCity = cityCorrections[city] || city;
+
+    if (correctedCity !== city) {
+        console.log(`Auto-corrected city name: "${city}" → "${correctedCity}"`);
+    }
+
+    const cityInfo = cityData[correctedCity];
+    if (!cityInfo) {
+        console.error(`No data found for city: "${correctedCity}" (original: "${city}")`);
+        console.error(`Available cities:`, Object.keys(cityData));
+        return null;
+    }
 
     const typeInfo = cityInfo[projectType];
-    if (!typeInfo) return null;
+    if (!typeInfo) {
+        console.error(`No data found for project type: "${projectType}" in city: "${correctedCity}"`);
+        console.error(`Available types for ${correctedCity}:`, Object.keys(cityInfo));
+        return null;
+    }
 
     return {
-        city,
+        city: correctedCity,  // ✅ Return corrected city name
         projectType,
         ...typeInfo
     };

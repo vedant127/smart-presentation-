@@ -561,6 +561,210 @@
             "placeholders": [
                 "{{City}}"
             ]
+        },
+        {
+            "id": "MKT_OVR_MUM_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Mumbai Market Overview",
+            "city": "Mumbai",
+            "category": "Market Overview",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "market",
+                "overview",
+                "Mumbai"
+            ]
+        },
+        {
+            "id": "MKT_OVR_BLR_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Market Overview",
+            "city": "Bangalore",
+            "category": "Market Overview",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "market",
+                "overview",
+                "Bangalore"
+            ]
+        },
+        {
+            "id": "MKT_OVR_DEL_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Market Overview",
+            "city": "Delhi",
+            "category": "Market Overview",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "market",
+                "overview",
+                "Delhi"
+            ]
+        },
+        {
+            "id": "SUP_MUM_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Mumbai Supply Analysis",
+            "city": "Mumbai",
+            "category": "Supply Analysis",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "supply",
+                "analysis",
+                "Mumbai"
+            ]
+        },
+        {
+            "id": "SUP_BLR_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Supply Analysis",
+            "city": "Bangalore",
+            "category": "Supply Analysis",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "supply",
+                "analysis",
+                "Bangalore"
+            ]
+        },
+        {
+            "id": "SUP_DEL_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Supply Analysis",
+            "city": "Delhi",
+            "category": "Supply Analysis",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "supply",
+                "analysis",
+                "Delhi"
+            ]
+        },
+        {
+            "id": "DEM_MUM_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Mumbai Demand Drivers",
+            "city": "Mumbai",
+            "category": "Demand Drivers",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "demand",
+                "drivers",
+                "Mumbai"
+            ]
+        },
+        {
+            "id": "DEM_BLR_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Demand Drivers",
+            "city": "Bangalore",
+            "category": "Demand Drivers",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "demand",
+                "drivers",
+                "Bangalore"
+            ]
+        },
+        {
+            "id": "DEM_DEL_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Demand Drivers",
+            "city": "Delhi",
+            "category": "Demand Drivers",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "demand",
+                "drivers",
+                "Delhi"
+            ]
+        },
+        {
+            "id": "IND_MUM_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Mumbai Key Indicators",
+            "city": "Mumbai",
+            "category": "Key Indicators",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "indicators",
+                "metrics",
+                "Mumbai"
+            ]
+        },
+        {
+            "id": "IND_BLR_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Bangalore Key Indicators",
+            "city": "Bangalore",
+            "category": "Key Indicators",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "indicators",
+                "metrics",
+                "Bangalore"
+            ]
+        },
+        {
+            "id": "IND_DEL_001",
+            "sourceFile": "market.pptx",
+            "slideNumber": 1,
+            "title": "Delhi Key Indicators",
+            "city": "Delhi",
+            "category": "Key Indicators",
+            "projectTypes": [
+                "Residential",
+                "Commercial"
+            ],
+            "tags": [
+                "indicators",
+                "metrics",
+                "Delhi"
+            ]
         }
     ]
 }
