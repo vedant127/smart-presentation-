@@ -7,6 +7,8 @@ import { getCityData } from '../data/cityData.js';
 import { addInvestmentAssumptionsTable, addROIAnalysisTable, addMarketAnalysisContent } from '../utils/slideContentHelpers.js';
 import { generateSlideContent } from './aiContentService.js';
 import { generateTOCTitles } from '../utils/titleGenerator.js';
+import { addROIChart, addCashFlowChart, addMarketGrowthChart, addInvestmentBreakdownChart } from '../utils/chartGenerator.js';
+import { generateInvestmentNotes, generateROINotes, generateMarketNotes, generateCashFlowNotes, generateCoverNotes } from '../utils/speakerNotesGenerator.js';
 
 const log = console.log;
 // AIRE Design System Colors
@@ -135,6 +137,15 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
         fontFace: 'Arial', fontSize: 10, color: COLORS.WHITE, transparency: 20
     });
 
+    // 📝 FEATURE #3: Add Speaker Notes to Cover Slide
+    const coverNotes = generateCoverNotes(
+        formData.title || "BUSINESS PRESENTATION",
+        formData.city || "Mumbai",
+        formData.projectType || "Residential"
+    );
+    slide1.addNotes(coverNotes);
+    log(`✅ Added speaker notes to cover slide`);
+
     // Slide 2: Table of Contents
     const slide2 = pres.addSlide({ masterName: 'MASTER_CONTENT' });
     slide2.addText("TABLE OF CONTENTS", {
@@ -183,17 +194,37 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
                 const contentSlide = pres.addSlide({ masterName: 'MASTER_CONTENT' });
 
                 // Determine which content to add based on slide category and title
-                if (slideInfo.title.includes('Investment Assumptions') || slideInfo.category === 'Financial Analysis' && slideInfo.title.includes('Investment')) {
+                if (slideInfo.title.includes('Investment Assumptions') || slideInfo.category === 'Investment Assumptions') {
                     // Add Investment Assumptions table with real data
+                    const cityData = getCityData(city, projectType);
                     addInvestmentAssumptionsTable(contentSlide, city, projectType);
-                    log(`Added Investment Assumptions table with ${city} ${projectType} data`);
+                    log(`✅ Added Investment Assumptions table with ${city} ${projectType} data`);
 
-                } else if (slideInfo.title.includes('ROI') || slideInfo.title.includes('Return')) {
+                    // 📊 FEATURE #2: Add Investment Breakdown Chart
+                    // addInvestmentBreakdownChart(contentSlide, city, projectType, cityData);
+                    // log(`✅ Added Investment Breakdown chart`);
+
+                    // 📝 FEATURE #3: Add Speaker Notes
+                    const investmentNotes = generateInvestmentNotes(city, projectType, cityData);
+                    contentSlide.addNotes(investmentNotes);
+                    log(`✅ Added speaker notes for Investment Assumptions`);
+
+                } else if (slideInfo.title.includes('ROI') || slideInfo.title.includes('Return') || slideInfo.category === 'Financial Analysis') {
                     // Add ROI Analysis table with real data
+                    const cityData = getCityData(city, projectType);
                     addROIAnalysisTable(contentSlide, city, projectType);
-                    log(`Added ROI Analysis table with ${city} ${projectType} data`);
+                    log(`✅ Added ROI Analysis table with ${city} ${projectType} data`);
 
-                } else if (slideInfo.title.includes('Cash Flow')) {
+                    // 📊 FEATURE #2: Add ROI Chart
+                    addROIChart(contentSlide, city, projectType, cityData);
+                    log(`✅ Added ROI chart`);
+
+                    // 📝 FEATURE #3: Add Speaker Notes
+                    const roiNotes = generateROINotes(city, projectType, cityData);
+                    contentSlide.addNotes(roiNotes);
+                    log(`✅ Added speaker notes for ROI Analysis`);
+
+                } else if (slideInfo.title.includes('Cash Flow') || slideInfo.category === 'Cash Flow Projections') {
                     // Add Cash Flow Analysis
                     const data = getCityData(city, projectType);
                     contentSlide.addText(`Cash Flow Analysis - ${city} ${projectType}`, {
@@ -216,17 +247,36 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
                     ];
 
                     contentSlide.addTable(cashFlowData, {
-                        x: 0.5, y: 1.5, w: 9, h: 3.5,
-                        colW: [2.25, 2.25, 2.25, 2.25],
+                        x: 0.5, y: 1.5, w: 4.5, h: 3.5,
+                        colW: [1.125, 1.125, 1.125, 1.125],
                         border: { pt: 1, color: 'CCCCCC' },
-                        fontSize: 14
+                        fontSize: 12
                     });
-                    log(`Added Cash Flow Analysis table`);
+                    log(`✅ Added Cash Flow Analysis table`);
+
+                    // 📊 FEATURE #2: Add Cash Flow Chart
+                    addCashFlowChart(contentSlide, city, projectType, data);
+                    log(`✅ Added Cash Flow chart`);
+
+                    // 📝 FEATURE #3: Add Speaker Notes
+                    const cashFlowNotes = generateCashFlowNotes(city, projectType);
+                    contentSlide.addNotes(cashFlowNotes);
+                    log(`✅ Added speaker notes for Cash Flow`);
 
                 } else if (slideInfo.category === 'Market Analysis') {
                     // Add Market Analysis content
+                    const cityData = getCityData(city, projectType);
                     addMarketAnalysisContent(contentSlide, city, projectType);
-                    log(`Added Market Analysis content for ${city} ${projectType}`);
+                    log(`✅ Added Market Analysis content for ${city} ${projectType}`);
+
+                    // 📊 FEATURE #2: Add Market Growth Chart
+                    addMarketGrowthChart(contentSlide, city, projectType);
+                    log(`✅ Added Market Growth chart`);
+
+                    // 📝 FEATURE #3: Add Speaker Notes
+                    const marketNotes = generateMarketNotes(city, projectType, cityData);
+                    contentSlide.addNotes(marketNotes);
+                    log(`✅ Added speaker notes for Market Analysis`);
 
                 } else if (slideInfo.category === 'Site Assessment') {
                     // Add Site Assessment content
