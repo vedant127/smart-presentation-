@@ -6,7 +6,7 @@
             "slideNumber": 1,
             "title": "Investment Assumptions - Mumbai Residential",
             "city": "Mumbai",
-            "category": "Financial Analysis",
+            "category": "Investment Assumptions",
             "projectTypes": [
                 "Residential"
             ],
@@ -29,7 +29,7 @@
             "slideNumber": 1,
             "title": "Investment Assumptions - Mumbai Commercial",
             "city": "Mumbai",
-            "category": "Financial Analysis",
+            "category": "Investment Assumptions",
             "projectTypes": [
                 "Commercial"
             ],
@@ -52,7 +52,7 @@
             "slideNumber": 1,
             "title": "Cash Flow Analysis - Mumbai Residential",
             "city": "Mumbai",
-            "category": "Financial Analysis",
+            "category": "Cash Flow Projections",
             "projectTypes": [
                 "Residential"
             ],
@@ -180,7 +180,7 @@
             "slideNumber": 1,
             "title": "Investment Assumptions - Bangalore Residential",
             "city": "Bangalore",
-            "category": "Financial Analysis",
+            "category": "Investment Assumptions",
             "projectTypes": [
                 "Residential"
             ],
@@ -203,7 +203,7 @@
             "slideNumber": 1,
             "title": "Investment Assumptions - Bangalore Commercial",
             "city": "Bangalore",
-            "category": "Financial Analysis",
+            "category": "Investment Assumptions",
             "projectTypes": [
                 "Commercial"
             ],
@@ -226,7 +226,7 @@
             "slideNumber": 1,
             "title": "Cash Flow Projections - Bangalore Residential",
             "city": "Bangalore",
-            "category": "Financial Analysis",
+            "category": "Cash Flow Projections",
             "projectTypes": [
                 "Residential"
             ],
@@ -353,7 +353,7 @@
             "slideNumber": 1,
             "title": "Investment Assumptions - Delhi Residential",
             "city": "Delhi",
-            "category": "Financial Analysis",
+            "category": "Investment Assumptions",
             "projectTypes": [
                 "Residential"
             ],
@@ -376,7 +376,7 @@
             "slideNumber": 1,
             "title": "Investment Assumptions - Delhi Commercial",
             "city": "Delhi",
-            "category": "Financial Analysis",
+            "category": "Investment Assumptions",
             "projectTypes": [
                 "Commercial",
                 "Retail"
@@ -400,7 +400,7 @@
             "slideNumber": 1,
             "title": "Cash Flow Analysis - Delhi Residential",
             "city": "Delhi",
-            "category": "Financial Analysis",
+            "category": "Cash Flow Projections",
             "projectTypes": [
                 "Residential"
             ],

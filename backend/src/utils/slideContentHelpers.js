@@ -5,7 +5,29 @@ import { getCityData } from '../data/cityData.js';
  */
 export const addInvestmentAssumptionsTable = (slide, city, projectType) => {
     const data = getCityData(city, projectType);
-    if (!data) return;
+    if (!data) {
+        console.warn(`⚠️  No data found for ${city} ${projectType} - using placeholder`);
+        slide.addText(`Investment Assumptions - ${city} ${projectType}`, {
+            x: 0.5,
+            y: 2.5,
+            w: 9,
+            h: 1,
+            fontSize: 24,
+            bold: true,
+            color: '234874',
+            align: 'center'
+        });
+        slide.addText('Data not available for this city/project type combination', {
+            x: 0.5,
+            y: 3.5,
+            w: 9,
+            h: 0.5,
+            fontSize: 14,
+            color: '666666',
+            align: 'center'
+        });
+        return;
+    }
 
     // Add title
     slide.addText(`Investment Assumptions - ${city} ${projectType}`, {
@@ -76,7 +98,29 @@ export const addInvestmentAssumptionsTable = (slide, city, projectType) => {
  */
 export const addROIAnalysisTable = (slide, city, projectType) => {
     const data = getCityData(city, projectType);
-    if (!data) return;
+    if (!data) {
+        console.warn(`⚠️  No data found for ${city} ${projectType} - using placeholder`);
+        slide.addText(`ROI Analysis - ${city} ${projectType}`, {
+            x: 0.5,
+            y: 2.5,
+            w: 9,
+            h: 1,
+            fontSize: 24,
+            bold: true,
+            color: '234874',
+            align: 'center'
+        });
+        slide.addText('Data not available for this city/project type combination', {
+            x: 0.5,
+            y: 3.5,
+            w: 9,
+            h: 0.5,
+            fontSize: 14,
+            color: '666666',
+            align: 'center'
+        });
+        return;
+    }
 
     // Add title
     slide.addText(`ROI Analysis - ${city} ${projectType}`, {
@@ -162,7 +206,29 @@ export const addROIAnalysisTable = (slide, city, projectType) => {
  */
 export const addMarketAnalysisContent = (slide, city, projectType) => {
     const data = getCityData(city, projectType);
-    if (!data) return;
+    if (!data) {
+        console.warn(`⚠️  No data found for ${city} ${projectType} - using placeholder`);
+        slide.addText(`${city} ${projectType} Market Overview`, {
+            x: 0.5,
+            y: 2.5,
+            w: 9,
+            h: 1,
+            fontSize: 24,
+            bold: true,
+            color: '234874',
+            align: 'center'
+        });
+        slide.addText('Data not available for this city/project type combination', {
+            x: 0.5,
+            y: 3.5,
+            w: 9,
+            h: 0.5,
+            fontSize: 14,
+            color: '666666',
+            align: 'center'
+        });
+        return;
+    }
 
     // Add title
     slide.addText(`${city} ${projectType} Market Overview`, {

@@ -5,6 +5,8 @@ import { Automizer, modify } from 'pptx-automizer';
 import { v4 as uuidv4 } from 'uuid';
 import { getCityData } from '../data/cityData.js';
 import { addInvestmentAssumptionsTable, addROIAnalysisTable, addMarketAnalysisContent } from '../utils/slideContentHelpers.js';
+import { generateSlideContent } from './aiContentService.js';
+import { generateTOCTitles } from '../utils/titleGenerator.js';
 
 const log = console.log;
 // AIRE Design System Colors
@@ -139,10 +141,17 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
         x: 0.5, y: 0.3, w: '90%', h: 0.6,
         fontFace: 'Century Schoolbook', fontSize: 28, color: COLORS.WHITE, bold: true
     });
-    // Use selected slides for TOC if available, otherwise sections
-    const tocItems = (selectedSlides && selectedSlides.length > 0)
-        ? selectedSlides.map(s => s.title)
-        : (presentationType.sections || []).map(s => s.name);
+
+    // 🔧 FIX: Generate TOC with ACTUAL titles that will be used on slides
+    let tocItems;
+    if (selectedSlides && selectedSlides.length > 0) {
+        const city = formData.city || 'Mumbai';
+        const projectType = formData.projectType || 'Residential';
+        // Use title generator to get ACTUAL titles that will appear on slides
+        tocItems = generateTOCTitles(selectedSlides, city, projectType);
+    } else {
+        tocItems = (presentationType.sections || []).map(s => s.name);
+    }
 
     const contentList = tocItems.map((s, i) => `${i + 1}. ${s} `).join('\n\n');
     slide2.addText(contentList, {
@@ -328,6 +337,3 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
         return { fileName: finalFileName, filePath: finalFilePath };
     }
 };
-
-export const mergePptxFiles = async () => { };
-export const buildFileKey = () => { };

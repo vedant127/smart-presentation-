@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import morgan from 'morgan';
 import connectDatabase from './config/database.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 
@@ -25,6 +26,11 @@ app.use(cors({
     credentials: true
 }));
 
+// Request logging (only in development)
+if (process.env.NODE_ENV !== 'production') {
+    app.use(morgan('dev'));
+}
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -44,6 +50,7 @@ app.use('/api/presentation-types', presentationTypeRoutes);
 app.use('/api/presentations', presentationRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/library', libraryRoutes);
 
 // 404 handler
 app.use(notFound);
@@ -56,31 +63,38 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
     try {
+        // Validate environment variables
+        const { validateEnv } = await import('./config/validateEnv.js');
+        if (!validateEnv()) {
+            console.error('Server startup aborted due to missing environment variables');
+            process.exit(1);
+        }
+
         // Connect to database
         await connectDatabase();
 
         // Start listening
         app.listen(PORT, () => {
-            console.log(`\n🚀 Server started on port ${PORT}`);
-            console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`🌐 Health check: http://localhost:${PORT}/health\n`);
+            console.log(`\nServer started on port ${PORT}`);
+            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`Health check: http://localhost:${PORT}/health\n`);
         });
 
     } catch (error) {
-        console.error('❌ Failed to start server:', error.message);
+        console.error('failed to start server:', error.message);
         process.exit(1);
     }
 };
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-    console.error('❌ Unhandled Promise Rejection:', err);
+    console.error('Unhandled Promise Rejection:', err);
     process.exit(1);
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err);
+    console.error('Uncaught Exception:', err);
     process.exit(1);
 });
 

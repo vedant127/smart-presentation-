@@ -57,7 +57,7 @@ export const cityData = {
             constructionCost: '₹6,500/sq ft',
             constructionAmount: '₹3.25 Cr',
             permits: '4%',
-            permitsAmount: '41 Lakhs',
+            permitsAmount: '₹41 Lakhs',
             marketing: '2.5%',
             marketingAmount: '₹26 Lakhs',
             totalCost: '₹10.92 Cr',
