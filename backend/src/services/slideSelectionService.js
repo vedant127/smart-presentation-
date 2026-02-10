@@ -77,15 +77,33 @@ export const selectSlides = (city, requirements, projectType) => {
         return 0;
     });
 
+    // STEP 5: Remove duplicates by ID (in case same slide selected multiple times)
+    const uniqueSlides = Array.from(
+        new Map(filteredSlides.map(slide => [slide.id, slide])).values()
+    );
+
+    // STEP 6: Limit to 1 slide per category (to avoid duplicate content)
+    // Since slides are sorted by relevance, we take the first (best) slide for each category
+    const seenCategories = new Set();
+    const finalSlides = uniqueSlides.filter(slide => {
+        if (seenCategories.has(slide.category)) {
+            console.log(`   ⚠️  Skipping duplicate category: [${slide.id}] ${slide.title} (${slide.category} already selected)`);
+            return false;
+        }
+        seenCategories.add(slide.category);
+        return true;
+    });
+
     console.log(`\n========================================`);
-    console.log(`📊 FINAL SELECTION: ${filteredSlides.length} slides`);
+    console.log(`📊 FINAL SELECTION: ${finalSlides.length} slides`);
+    console.log(`   (${uniqueSlides.length - finalSlides.length} duplicates removed by category)`);
     console.log(`========================================`);
-    filteredSlides.forEach((slide, index) => {
+    finalSlides.forEach((slide, index) => {
         console.log(`${index + 1}. [${slide.id}] ${slide.title}`);
         console.log(`   📄 Source: ${slide.sourceFile} (Slide #${slide.slideNumber})`);
         console.log(`   🏙️  City: ${slide.city} | 🏢 Type: ${slide.projectTypes.join(', ')} | 📂 Category: ${slide.category}`);
     });
     console.log(`========================================\n`);
 
-    return filteredSlides;
+    return finalSlides;
 }
