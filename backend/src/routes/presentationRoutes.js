@@ -28,6 +28,11 @@ router.post('/create-download', createAndDownload);
 // @access  Public
 router.post('/generate-presentation', generateSelection);
 
+// @route   POST /api/presentations/generate
+// @desc    Generate presentation (legacy/history based)
+// @access  Public (temporarily or Private depending on Auth)
+router.post('/generate', generate);
+
 // All routes require authentication
 router.use(authenticate);
 

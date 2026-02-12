@@ -79,7 +79,7 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
     formData = validation.data;  // Use corrected data
 
     if (validation.corrections.length > 0) {
-        console.log(`📝 Auto-corrected ${validation.corrections.length} typo(s):`);
+        console.log(`Auto-corrected ${validation.corrections.length} typo(s):`);
         validation.corrections.forEach(c => {
             console.log(`   - ${c.field}: "${c.original}" → "${c.corrected}"`);
         });
@@ -106,7 +106,7 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
     pres.title = safeText(formData.title);
 
     // Define Master Slides
-    // ⚠️ CRITICAL FIX: Slide number position MUST fit within 7.5" slide height!
+    // CRITICAL FIX: Slide number position MUST fit within 7.5" slide height!
     // Slide height: 7.5"
     // Safe footer position: 6.9" (leaves 0.6" margin from bottom)
     pres.defineSlideMaster({
@@ -283,7 +283,7 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
 
                     // FEATURE #2: Add ROI Chart
                     addROIChart(contentSlide, city, projectType, cityData);
-                    log(`✅ Added ROI chart`);
+                    log(`Added ROI chart`);
 
                     // FEATURE #3: Add Speaker Notes
                     const roiNotes = generateROINotes(city, projectType, cityData);
@@ -555,6 +555,216 @@ export const generatePresentationFromTemplate = async ({ template, formData, use
     return {
         fileName: finalFileName,
         filePath: path.join(process.cwd(), 'generated', finalFileName),
+        fileSize: 0
+    };
+};
+
+/**
+ * Generate Presentation dynamically from plots (Client Form Logic)
+ * Follows the 5-step matching algorithm
+ */
+/**
+ * THE SYSTEM (Spotify-like Assembly Engine)
+ * "Task 2: Slide assembly logic from structured folders"
+ * 
+ * Algorithm:
+ * 1. Read Playlist Definition (PresentationType & Sections)
+ * 2. Read User Input (Plots/Parameters)
+ * 3. Foreach Section (Song Slot):
+ *    - Determine the "key" (Filename) based on Plot Metadata.
+ *    - Key = [Criterion1_Value] + [Criterion2_Value] + ... .pptx
+ *    - Pull that exact file from the Section Folder (Album).
+ * 4. Merge into Master Playlist.
+ */
+export const assemblePresentation = async ({ presentationType, formData, plots }) => {
+    console.log(`\n🏭 SYSTEM: Starting Assembly for "${presentationType.name}"`);
+    console.log(`   Plots (Contexts): ${plots.length}`);
+
+    // 1. Initialize Automizer (The Player)
+    const automizer = new Automizer({
+        templateDir: process.cwd(),
+        outputDir: path.join(process.cwd(), 'generated')
+    });
+
+    // 1.1 Load Root Template (The Stage)
+    // 1.1 Load Root Template (The Stage)
+    let libraryRoot = path.join(process.cwd(), 'Library');
+    if (!fs.existsSync(libraryRoot)) {
+        libraryRoot = path.join(process.cwd(), '..', 'Library');
+    }
+
+    const rootTemplatePath = path.join(libraryRoot, 'RootTemplate.pptx');
+    if (fs.existsSync(rootTemplatePath)) {
+        automizer.loadRoot(rootTemplatePath);
+    } else {
+        // Specific error logging for 500 debugging
+        console.error(`CRITICAL: RootTemplate.pptx missing at ${rootTemplatePath}`);
+        throw new Error(`SYSTEM ERROR: RootTemplate.pptx missing at ${rootTemplatePath}`);
+    }
+
+    // 2. Normalize Plots Data
+    // Ensure we have an array of data objects, even if it's just global formData
+    const plotContexts = (plots && plots.length > 0)
+        ? plots.map(p => p.criteria || p.data || p)
+        : [formData]; // Fallback to global data as single context
+
+    // 3. Iterate Sections (The Playlist)
+    const sections = (presentationType.sections || []).sort((a, b) => a.order - b.order);
+
+    for (const section of sections) {
+        console.log(`\n🎵 Processing Section: "${section.name}"`);
+
+        // Locate Album (Folder)
+        const typeFolderName = presentationType.name;
+        const sectionFolderName = section.folderPath || section.name;
+        const sectionDir = path.join(libraryRoot, typeFolderName, sectionFolderName);
+
+        if (!fs.existsSync(sectionDir)) {
+            console.warn(`MISSING ALBUM: Folder not found at ${sectionDir}`);
+            continue;
+        }
+
+        // Logic: Should this section play once (Static) or repeat per context (Varying)?
+        if (section.isVarying) {
+            // VARYING: Needs to match specific files for each plot context
+            // Identify which criteria drive this section (e.g., only "City" matters? or "City + Asset"?)
+            // Fallback: Use ALL defined criteria if varyingCriteria is empty.
+
+            const relevantCriteriaNames = (section.varyingCriteria && section.varyingCriteria.length > 0)
+                ? section.varyingCriteria
+                : presentationType.criteria.map(c => c.name);
+
+            // Deduplicate keys for this section to avoid repeating identical slides
+            // (e.g. if Plot 1 and 2 are both "Mumbai", only show "Mumbai Market Overview" once)
+            // Helper: XML Replacer Factory
+            const createReplacer = (dataContext) => {
+                return (xml) => {
+                    let modifiedXml = xml;
+                    Object.keys(dataContext).forEach(key => {
+                        const val = safeText(dataContext[key]);
+                        // Regex to find {{KEY}} globally. Case-insensitive to be friendly?
+                        // Let's stick to case-sensitive or exact match based on user request {{KEY}}.
+                        // User request: {{CITY}} -> "Bangalore".
+                        const regex = new RegExp(`{{${key}}}`, 'g');
+                        modifiedXml = modifiedXml.replace(regex, val);
+                    });
+                    return modifiedXml;
+                };
+            };
+
+            // Deduplicate keys for this section to avoid repeating identical slides
+            // (e.g. if Plot 1 and 2 are both "Mumbai", only show "Mumbai Market Overview" once)
+            const generatedKeys = new Set();
+
+            for (const context of plotContexts) {
+                // Build Key: "val1 + val2 + val3"
+                const keyParts = relevantCriteriaNames.map(critName => {
+                    // Find value efficiently (case-insensitive key match)
+                    const key = Object.keys(context).find(k => k.toLowerCase() === critName.toLowerCase());
+                    const val = key ? context[key] : '';
+                    return val.toLowerCase().trim();
+                });
+
+                // Remove empty parts (e.g. if a criterion was not filled)
+                const validParts = keyParts.filter(p => p !== '');
+
+                if (validParts.length === 0) {
+                    console.warn(`   ⚠️ Skipping context: No metadata found for criteria [${relevantCriteriaNames.join(', ')}]`);
+                    continue;
+                }
+
+                const filenameKey = validParts.join(' + '); // The "Song Name"
+                const fullFilename = `${filenameKey}.pptx`;
+
+                if (generatedKeys.has(filenameKey)) continue; // Already added this track
+                generatedKeys.add(filenameKey);
+
+                const filePath = path.join(sectionDir, fullFilename);
+
+                if (fs.existsSync(filePath)) {
+                    // Safety Check: Is file valid?
+                    if (fs.statSync(filePath).size === 0) {
+                        console.warn(`   ⚠️ SKIPPED CORRUPT FILE (0 bytes): "${fullFilename}"`);
+                        continue;
+                    }
+
+                    console.log(`   ▶️ Adding Track: "${fullFilename}" (Applying Data...)`);
+                    try {
+                        const loadKey = `vary_${section.order}_${filenameKey.replace(/[^a-z0-9]/g, '')}_${uuidv4()}`;
+                        automizer.load(filePath, loadKey);
+
+                        // Apply Template Data Fusion
+                        automizer.addSlide(loadKey, 1, (slide) => {
+                            slide.modify(createReplacer(context));
+                        });
+
+                    } catch (err) {
+                        console.error(`   ❌ ERROR Adding Track "${fullFilename}":`, err.message);
+                    }
+                } else {
+                    console.warn(`   ❌ Track Not Found: "${fullFilename}" (Skipping)`);
+                }
+            }
+
+        } else {
+            // UNVARYING (Static)
+            const files = fs.readdirSync(sectionDir).filter(f => f.endsWith('.pptx') && !f.startsWith('~$'));
+
+            if (files.length > 0) {
+                const filename = files[0];
+                const filePath = path.join(sectionDir, filename);
+
+                if (fs.statSync(filePath).size > 0) {
+                    console.log(`   ▶️ Adding Static Track: "${filename}"`);
+                    try {
+                        // Helper: XML Replacer Factory (Inline for Static Block)
+                        const createReplacer = (dataContext) => {
+                            return (xml) => {
+                                let modifiedXml = xml;
+                                Object.keys(dataContext).forEach(key => {
+                                    const val = safeText(dataContext[key]);
+                                    const regex = new RegExp(`{{${key}}}`, 'g');
+                                    modifiedXml = modifiedXml.replace(regex, val);
+                                });
+                                return modifiedXml;
+                            };
+                        };
+
+                        const loadKey = `static_${section.order}_${uuidv4()}`;
+                        automizer.load(filePath, loadKey);
+                        automizer.addSlide(loadKey, 1, (slide) => {
+                            slide.modify(createReplacer(formData));
+                        });
+                    } catch (err) {
+                        console.error(`   ❌ ERROR Adding Static Track "${filename}":`, err.message);
+                    }
+                } else {
+                    console.warn(`   ⚠️ SKIPPED CORRUPT FILE (0 bytes): "${filename}"`);
+                }
+            } else {
+                console.warn(`   ⚠️ Empty Album: No PPTX files in ${section.name}`);
+            }
+        }
+    }
+
+    // 4. Produce Record (Output)
+    const runId = uuidv4();
+    const finalFileName = `${(formData.title || 'Presentation').replace(/[^a-zA-Z0-9]/g, '_')}_${runId}.pptx`;
+
+    let outputDir = path.join(process.cwd(), 'generated');
+    if (!fs.existsSync(path.join(process.cwd(), 'Library'))) {
+        outputDir = path.join(process.cwd(), '..', 'generated');
+    }
+    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+    const result = await automizer.write(finalFileName);
+
+    console.log(`\n✅ SYSTEM: Assembly Complete.`);
+    console.log(`   Output: ${finalFileName}`);
+
+    return {
+        fileName: finalFileName,
+        filePath: path.join(outputDir, finalFileName),
         fileSize: 0
     };
 };

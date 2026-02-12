@@ -75,6 +75,27 @@ export const DynamicGenerator = () => {
     const handleGenerate = async () => {
         if (!formData.title) return alert("Title is required");
 
+        // VALIDATION: Check if all plot fields have values
+        if (schema.enablePlots) {
+            for (let i = 0; i < plots.length; i++) {
+                const plot = plots[i];
+                for (const criterion of schema.criteria) {
+                    if (!plot.data[criterion.name]) {
+                        alert(`Please select a value for ${criterion.name} in Plot ${i + 1}`);
+                        return;
+                    }
+                }
+            }
+        } else {
+            // Validate global fields if any
+            for (const criterion of schema.criteria) {
+                if (!formData[criterion.name]) {
+                    alert(`Please select a value for ${criterion.name}`);
+                    return;
+                }
+            }
+        }
+
         setIsGenerating(true);
         setSuccess(false);
 
@@ -84,24 +105,10 @@ export const DynamicGenerator = () => {
                 presentationTypeId: selectedTypeId,
                 formData: {
                     ...formData,
-                    // EXPLICIT MAPPING FOR SLIDE SELECTION
-                    // These fields ensure the backend 'selectSlides' logic finds what it needs
-                    city: formData.City || formData.city || "Mumbai",
-                    projectType: formData.AssetType || formData.assetType || "Residential",
-                    category: formData.Category || formData.category,
-                    requirements: formData.Category ? [formData.Category] : (formData.requirements || []),
-
-                    // Flatten plot Count for naive templates
                     plotCount: plots.length
                 },
                 plots: schema.enablePlots ? plots.map(p => ({
-                    criteria: {
-                        ...p.data,
-                        // Also map inside plot criteria for robustness
-                        city: p.data.City || p.data.city,
-                        projectType: p.data.AssetType || p.data.assetType,
-                        category: p.data.Category || p.data.category
-                    }
+                    criteria: p.data
                 })) : []
             };
 
@@ -113,15 +120,33 @@ export const DynamicGenerator = () => {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `${formData.title.replace(/\s+/g, '_')}_Presentation.pptx`);
+            link.setAttribute('download', `${(formData.title || 'Presentation').replace(/\s+/g, '_')}_${Date.now()}.pptx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
 
+            // Cleanup
+            window.URL.revokeObjectURL(url);
             setSuccess(true);
-        } catch (err) {
-            console.error(err);
-            alert("Generation failed");
+
+        } catch (err: any) {
+            console.error("Presentation Generation Error:", err);
+
+            // If response is a Blob (because we asked for one), we need to parse it to see the JSON error
+            if (err.response && err.response.data instanceof Blob) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const errorJson = JSON.parse(reader.result as string);
+                        alert(`Generation Failed: ${errorJson.message || 'Unknown Error'}`);
+                    } catch (e) {
+                        alert("Generation Failed: Internal Server Error");
+                    }
+                };
+                reader.readAsText(err.response.data);
+            } else {
+                alert(`Generation Failed: ${err.message || 'Network Error'}`);
+            }
         } finally {
             setIsGenerating(false);
         }

@@ -25,9 +25,9 @@ const uploadFile = async (req, res, next) => {
 
         const { destinationPath } = req.body;
 
-        if (!destinationPath) {
+        if (destinationPath === undefined || destinationPath === null) {
             // Delete uploaded file
-            fs.unlinkSync(req.file.path);
+            if (req.file) fs.unlinkSync(req.file.path);
 
             return res.status(400).json({
                 success: false,

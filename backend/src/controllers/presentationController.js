@@ -1,7 +1,7 @@
 import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
 import PresentationTemplate from '../models/PresentationTemplate.js';
-import { generatePresentation, generatePresentationFromTemplate } from '../services/presentationService.js';
+import { generatePresentation, generatePresentationFromTemplate, assemblePresentation } from '../services/presentationService.js';
 import { selectSlides } from '../services/slideSelectionService.js';
 
 
@@ -360,41 +360,27 @@ const createAndDownload = async (req, res, next) => {
         const guestId = '000000000000000000000000';
         const userId = req.user ? req.user._id : guestId;
 
-        // --- NEW: SLIDE SELECTION INTEGRATION ---
-        // Extract criteria from the first plot (since we're generating one cohesive report)
-        // or prioritize formData if available globally
-        let selectedSlides = [];
+        // THE SYSTEM: Spotify-like "Playlist" Assembly
+        // If the type has defined sections, we use the Assembly Engine.
+        // This works for both Multi-Plot (List of Songs) and Single-Context project types.
+        if (presentationType.sections && presentationType.sections.length > 0) {
+            console.log(`🏭 Starting System Assembly for ${presentationType.name}`);
 
-        // Try getting criteria from plots[0] (the primary plot logic)
-        const primaryPlot = (plots && plots.length > 0) ? plots[0] : null;
-        const criteria = primaryPlot ? (primaryPlot.criteria || primaryPlot.data || {}) : formData;
-
-
-        const city = formData.city || "Mumbai"; // Default fallback
-        const projectType = criteria.assetType || criteria.projectType || formData.projectType || "Residential";
-
-        // --- MATCHING ENGINE START ---
-        // 1. Try to find a specific template for this City + Asset Type
-        const template = await PresentationTemplate.findOne({
-            city: { $regex: new RegExp(`^${city}$`, 'i') },
-            assetType: { $regex: new RegExp(`^${projectType}$`, 'i') }
-        }).populate('slides.libraryItemId');
-
-        if (template) {
-            console.log(`🎯 MATCHING ENGINE: Found template for ${city} - ${projectType}`);
-            const result = await generatePresentationFromTemplate({
-                template,
+            const result = await assemblePresentation({
+                presentationType,
                 formData,
+                plots: plots || [], // Pass empty array if null, engine handles it as single context
                 userId
             });
 
+            // History Tracking
             try {
-                // Simplified history for template gen
                 await PresentationHistory.create({
                     user: userId,
                     presentationType: presentationType._id,
-                    presentationTypeName: `${presentationType.name} (Template)`,
+                    presentationTypeName: `${presentationType.name} (Assembly)`,
                     formData,
+                    plots: plots || [],
                     generatedFileName: result.fileName,
                     filePath: result.filePath,
                     status: 'completed'
@@ -403,61 +389,35 @@ const createAndDownload = async (req, res, next) => {
 
             return res.download(result.filePath, result.fileName);
         }
-        // --- MATCHING ENGINE END ---
 
-        // Requirements: map 'category' or explicit requirements array
+        // --- OLD MATCHING ENGINE (Fallback for non-plot types) ---
+        // 1. Try to find a specific template for this City + Asset Type
+        // ... existing logic ...
+        const city = formData.city || "Mumbai"; // Default fallback
+        const projectType = formData.assetType || formData.projectType || "Residential";
 
-        // Requirements: map 'category' or explicit requirements array
-        let requirements = formData.requirements || criteria.requirements || [];
+        const template = await PresentationTemplate.findOne({
+            city: { $regex: new RegExp(`^${city}$`, 'i') },
+            assetType: { $regex: new RegExp(`^${projectType}$`, 'i') }
+        }).populate('slides.libraryItemId');
 
-        // Ensure requirements is an array
-        if (!Array.isArray(requirements)) {
-            requirements = [requirements];
+        if (template) {
+            const result = await generatePresentationFromTemplate({
+                template,
+                formData,
+                userId
+            });
+            return res.download(result.filePath, result.fileName);
         }
 
-        // Add category if specified
-        if (criteria.category && !requirements.includes(criteria.category)) {
-            requirements.push(criteria.category);
-        }
-        if (formData.category && !requirements.includes(formData.category)) {
-            requirements.push(formData.category);
-        }
-
-        console.log(`\n[CreateDownload] Slide Selection Parameters:`);
-        console.log(`   City: ${city}`);
-        console.log(`   Project Type: ${projectType}`);
-        console.log(`   Requirements: ${JSON.stringify(requirements)}`);
-
-        selectedSlides = selectSlides(city, requirements, projectType);
-
-        // Generate presentation
+        // If no template matched and no plots, maybe regular generation?
+        // Fallback to old service
         const result = await generatePresentation({
             presentationType,
             formData,
-            plots: plots || [],
-            userId: userId,
-            selectedSlides // Pass the selected slides to the service
+            plots: [],
+            userId
         });
-
-        // Save to history (optional but good for tracking)
-        // We use catch() to suppress errors if history creation fails for guests (e.g. foreign key constraints)
-        try {
-            await PresentationHistory.create({
-                user: userId,
-                presentationType: presentationType._id,
-                presentationTypeName: presentationType.name,
-                formData,
-                plots: plots || [],
-                generatedFileName: result.fileName,
-                filePath: result.filePath,
-                fileSize: result.fileSize,
-                status: 'completed'
-            });
-        } catch (hErr) {
-            console.warn("History tracking skipped for guest user:", hErr.message);
-        }
-
-        // Send file directly
         res.download(result.filePath, result.fileName);
 
     } catch (error) {

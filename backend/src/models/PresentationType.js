@@ -75,7 +75,7 @@ const presentationTypeSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-presentationTypeSchema.index({ name: 1 });
+// Note: 'unique: true' on 'name' already creates an index, so we don't need to define it again manually here to avoid "Duplicate schema index" warning.
 
 const PresentationType = mongoose.model('PresentationType', presentationTypeSchema);
 
