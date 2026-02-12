@@ -214,41 +214,52 @@ export const TypeBuilder = () => {
                                         />
                                     </div>
                                     <div className="md:col-span-2 pt-6">
-                                        <label className="flex items-center gap-2 cursor-pointer">
+                                        <label className={`flex items-center gap-2 cursor-pointer p-2 rounded-lg transition-colors ${s.isVarying ? 'bg-indigo-900/50 border border-indigo-500/50' : 'hover:bg-slate-800'}`}>
                                             <input
                                                 type="checkbox"
-                                                className="rounded bg-slate-800 border-slate-700"
+                                                className="rounded bg-slate-800 border-slate-700 w-5 h-5 text-indigo-500 focus:ring-indigo-500"
                                                 checked={s.isVarying}
                                                 onChange={e => updateSection(idx, 'isVarying', e.target.checked)}
                                             />
-                                            <span className="text-sm text-slate-300">Varying?</span>
+                                            <span className={`text-sm font-medium ${s.isVarying ? 'text-indigo-300' : 'text-slate-400'}`}>
+                                                {s.isVarying ? 'Varying Content' : 'Fixed Content'}
+                                            </span>
                                         </label>
                                     </div>
                                     {s.isVarying && (
-                                        <div className="md:col-span-3">
-                                            <label className="text-xs text-slate-500">Dependant Criteria</label>
-                                            <select
-                                                className="w-full bg-slate-800 border-slate-700 rounded px-3 py-2 text-sm text-white"
-                                                onChange={e => {
-                                                    const val = e.target.value;
-                                                    if (!val) return;
-                                                    const current = s.varyingCriteria || [];
-                                                    if (!current.includes(val)) updateSection(idx, 'varyingCriteria', [...current, val]);
-                                                }}
-                                            >
-                                                <option value="">+ Add Dependency</option>
-                                                {form.criteria.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                                            </select>
-                                            <div className="flex flex-wrap gap-1 mt-2">
-                                                {s.varyingCriteria?.map((vc: string) => (
-                                                    <span key={vc} className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded flex items-center gap-1">
-                                                        {vc}
-                                                        <button
-                                                            onClick={() => updateSection(idx, 'varyingCriteria', s.varyingCriteria.filter((x: string) => x !== vc))}
-                                                            className="hover:text-white"
-                                                        >×</button>
-                                                    </span>
-                                                ))}
+                                        <div className="md:col-span-12 mt-2 bg-indigo-950/30 border border-indigo-500/30 p-4 rounded-lg">
+                                            <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2">Varying Rules Configuration</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="text-xs text-indigo-300 mb-1 block">Dependant Criteria (e.g. City)</label>
+                                                    <select
+                                                        className="w-full bg-slate-900 border border-indigo-500/50 rounded px-3 py-2 text-sm text-white"
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            if (!val) return;
+                                                            const current = s.varyingCriteria || [];
+                                                            if (!current.includes(val)) updateSection(idx, 'varyingCriteria', [...current, val]);
+                                                        }}
+                                                    >
+                                                        <option value="">+ Add Dependency</option>
+                                                        {form.criteria.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-indigo-300 mb-1 block">Selected Dependencies</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {s.varyingCriteria?.length === 0 && <span className="text-xs text-slate-500 italic">No dependencies selected. This section will repeat for every plot but content won't filter by specific criteria.</span>}
+                                                        {s.varyingCriteria?.map((vc: string) => (
+                                                            <span key={vc} className="text-xs bg-indigo-600 text-white px-2 py-1 rounded-md shadow-sm flex items-center gap-2">
+                                                                {vc}
+                                                                <button
+                                                                    onClick={() => updateSection(idx, 'varyingCriteria', s.varyingCriteria.filter((x: string) => x !== vc))}
+                                                                    className="hover:text-red-300"
+                                                                >×</button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     )}

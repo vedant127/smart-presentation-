@@ -1,6 +1,7 @@
 import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
-import { generatePresentation } from '../services/presentationService.js';
+import PresentationTemplate from '../models/PresentationTemplate.js';
+import { generatePresentation, generatePresentationFromTemplate } from '../services/presentationService.js';
 import { selectSlides } from '../services/slideSelectionService.js';
 
 
@@ -369,8 +370,42 @@ const createAndDownload = async (req, res, next) => {
         const criteria = primaryPlot ? (primaryPlot.criteria || primaryPlot.data || {}) : formData;
 
 
-        const city = criteria.city || formData.city || "Mumbai"; // Default fallback
+        const city = formData.city || "Mumbai"; // Default fallback
         const projectType = criteria.assetType || criteria.projectType || formData.projectType || "Residential";
+
+        // --- MATCHING ENGINE START ---
+        // 1. Try to find a specific template for this City + Asset Type
+        const template = await PresentationTemplate.findOne({
+            city: { $regex: new RegExp(`^${city}$`, 'i') },
+            assetType: { $regex: new RegExp(`^${projectType}$`, 'i') }
+        }).populate('slides.libraryItemId');
+
+        if (template) {
+            console.log(`🎯 MATCHING ENGINE: Found template for ${city} - ${projectType}`);
+            const result = await generatePresentationFromTemplate({
+                template,
+                formData,
+                userId
+            });
+
+            try {
+                // Simplified history for template gen
+                await PresentationHistory.create({
+                    user: userId,
+                    presentationType: presentationType._id,
+                    presentationTypeName: `${presentationType.name} (Template)`,
+                    formData,
+                    generatedFileName: result.fileName,
+                    filePath: result.filePath,
+                    status: 'completed'
+                });
+            } catch (hErr) { console.warn("History skipped:", hErr.message); }
+
+            return res.download(result.filePath, result.fileName);
+        }
+        // --- MATCHING ENGINE END ---
+
+        // Requirements: map 'category' or explicit requirements array
 
         // Requirements: map 'category' or explicit requirements array
         let requirements = formData.requirements || criteria.requirements || [];

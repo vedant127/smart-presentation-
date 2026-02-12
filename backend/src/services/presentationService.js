@@ -479,3 +479,82 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
         return { fileName: finalFileName, filePath: finalFilePath };
     }
 };
+
+/**
+ * Generate Presentation using strict template matching (Assembly Mode)
+ * Uses pptx-automizer to merge existing slides from Library
+ */
+export const generatePresentationFromTemplate = async ({ template, formData, userId }) => {
+    // 1. Setup Automizer
+    const automizer = new Automizer({
+        templateDir: process.cwd(),
+        outputDir: path.join(process.cwd(), 'generated')
+    });
+
+    // 1.1 Load Root Template (REQUIRED by Automizer)
+    let libraryRoot = path.join(process.cwd(), 'Library');
+    if (!fs.existsSync(libraryRoot)) libraryRoot = path.join(process.cwd(), '..', 'Library');
+
+    const rootTemplatePath = path.join(libraryRoot, 'RootTemplate.pptx');
+
+    if (fs.existsSync(rootTemplatePath)) {
+        automizer.loadRoot(rootTemplatePath);
+    } else {
+        // Fallback: Create a blank presentation or handle error?
+        // Automizer NEEDS a root. 
+        console.warn("WARNING: RootTemplate.pptx not found in Library. Checking for alternatives...");
+        // Use the first available slide as root? No, that's messy.
+        // Throw error for now, as Library MUST have a root template.
+        throw new Error(`RootTemplate.pptx not found at ${rootTemplatePath}. Please verify Library structure.`);
+    }
+
+    const runId = uuidv4();
+    const finalFileName = `${(formData.title || template.city + '_' + template.assetType).replace(/[^a-zA-Z0-9]/g, '_')}_${runId}.pptx`;
+
+    console.log(`🏭 TEMPLATE GENERATE: ${template.city} - ${template.assetType}`);
+
+    // 2. Identify Metadata and Slides
+    const sortedSlides = template.slides.sort((a, b) => a.order - b.order);
+
+    // 3. Process slides
+    for (const slideSlot of sortedSlides) {
+        if (!slideSlot.libraryItemId || !slideSlot.libraryItemId.path) {
+            console.warn(`Skipping slot ${slideSlot.sectionName}: No library item path`);
+            continue;
+        }
+
+        const relativePath = slideSlot.libraryItemId.path;
+
+        // Resolve absolute path
+        let libraryRoot = path.join(process.cwd(), 'Library');
+        if (!fs.existsSync(libraryRoot)) libraryRoot = path.join(process.cwd(), '..', 'Library');
+
+        const fullPath = path.join(libraryRoot, relativePath);
+
+        if (!fs.existsSync(fullPath)) {
+            console.warn(`Skipping missing file: ${fullPath}`);
+            continue;
+        }
+
+        if (fs.statSync(fullPath).isDirectory()) {
+            console.warn(`Skipping folder path: ${fullPath} (Template should point to files)`);
+            continue;
+        }
+
+        // Add to Automizer
+        const alias = `slide_${slideSlot._id}`;
+        automizer.load(fullPath, alias);
+
+        // Assume slide 1 (standard for slide libraries)
+        automizer.addSlide(alias, 1);
+    }
+
+    // 4. Write Output
+    const result = await automizer.write(finalFileName);
+
+    return {
+        fileName: finalFileName,
+        filePath: path.join(process.cwd(), 'generated', finalFileName),
+        fileSize: 0
+    };
+};

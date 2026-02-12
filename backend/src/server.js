@@ -13,6 +13,7 @@ import presentationRoutes from './routes/presentationRoutes.js';
 import fileRoutes from './routes/fileRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import libraryRoutes from './routes/libraryRoutes.js';
+import presentationTemplateRoutes from './routes/presentationTemplateRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -51,6 +52,7 @@ app.use('/api/presentations', presentationRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/library', libraryRoutes);
+app.use('/api/templates', presentationTemplateRoutes);
 
 // 404 handler
 app.use(notFound);

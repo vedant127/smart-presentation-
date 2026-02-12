@@ -150,39 +150,41 @@ const seedData = async () => {
 
         console.log('✅ Feasibility Study created');
 
-        console.log('\n📊 Creating Business Analysis presentation type...');
+        console.log('✅ Feasibility Study created');
+
+        console.log('\n📊 Creating Credential Report presentation type...');
         await PresentationType.create({
-            name: 'Business Analysis',
-            description: 'Professional business analysis including market trends and strategy',
-            enablePlots: false,
+            name: 'Credential Report',
+            description: 'Company credentials and track record',
+            enablePlots: false, // Usually credential reports are general or about the company, not specific plots
             criteria: [
-                { name: 'Client Name', type: 'single', options: [], required: true },
-                { name: 'Target Market', type: 'single', options: [], required: true }
+                { name: 'Target Market', type: 'single', options: ['KSA', 'UAE', 'Qatar'], required: true },
+                { name: 'Sector', type: 'single', options: ['Real Estate', 'Hospitality', 'Infrastructure'], required: true }
             ],
             sections: [
-                { name: 'Executive Summary', order: 1, isVarying: false },
-                { name: 'Market Analysis', order: 2, isVarying: false },
-                { name: 'Competitor Landscape', order: 3, isVarying: false },
-                { name: 'Strategic Recommendations', order: 4, isVarying: false },
-                { name: 'Financial Projections', order: 5, isVarying: false },
-                { name: 'Next Steps', order: 6, isVarying: false }
+                { name: 'Company Overview', order: 1, isVarying: false },
+                { name: 'Our Team', order: 2, isVarying: false },
+                { name: 'Track Record', order: 3, isVarying: false },
+                { name: 'Case Studies', order: 4, isVarying: true, varyingCriteria: ['Sector'] }, // Example of varying content
+                { name: 'Client List', order: 5, isVarying: false },
+                { name: 'Contact Us', order: 6, isVarying: false }
             ],
             createdBy: admin._id,
             isActive: true
         });
-        console.log('✅ Business Analysis created');
+        console.log('Credential Report created');
 
-        console.log('✅ Feasibility Study created');
+        console.log('Feasibility Study created');
 
-        console.log('\n✅ Database seeding completed successfully!\n');
-        console.log('📝 Admin Credentials:');
-        console.log('   Email: admin@smartpresentation.com');
-        console.log('   Password: admin123\n');
+        console.log('\nDatabase seeding completed successfully!\n');
+        console.log('Admin Credentials:');
+        console.log('Email: admin@smartpresentation.com');
+        console.log('Password: admin123\n');
 
         process.exit(0);
 
     } catch (error) {
-        console.error('❌ Seeding failed:', error);
+        console.error('Seeding failed:', error);
         process.exit(1);
     }
 };
