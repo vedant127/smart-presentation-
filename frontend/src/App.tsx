@@ -3,7 +3,8 @@ import { DynamicGenerator } from './components/generator/DynamicGenerator';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { TypeBuilder } from './components/admin/TypeBuilder';
 import { LibraryManager } from './components/admin/LibraryManager';
-import { Sparkles, Settings, Folder } from 'lucide-react';
+import { DataManager } from './components/admin/DataManager';
+import { Sparkles, Settings, Folder, Database } from 'lucide-react';
 
 function App() {
   return (
@@ -25,6 +26,9 @@ function App() {
             <div className="flex items-center gap-4">
               <Link to="/admin/library" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">
                 <Folder className="w-4 h-4" /> Library
+              </Link>
+              <Link to="/admin/data" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">
+                <Database className="w-4 h-4" /> Data
               </Link>
               <Link to="/admin" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">
                 <Settings className="w-4 h-4" /> Admin
@@ -59,6 +63,7 @@ function App() {
             <Route path="/admin/create" element={<TypeBuilder />} />
             <Route path="/admin/edit/:id" element={<TypeBuilder />} />
             <Route path="/admin/library" element={<LibraryManager />} />
+            <Route path="/admin/data" element={<DataManager />} />
           </Routes>
         </main>
       </div>

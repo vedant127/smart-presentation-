@@ -177,7 +177,7 @@ export const DynamicGenerator = () => {
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
                 value={value || ''}
                 onChange={e => onChange(e.target.value)}
-                placeholder={`Enter ${criteria.name}`}
+                placeholder={`Enter ${criteria.name} (e.g. New Value)`}
             />
         );
     };

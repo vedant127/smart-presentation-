@@ -17,7 +17,9 @@ import { selectSlides } from '../services/slideSelectionService.js';
  */
 const generate = async (req, res, next) => {
     try {
-        const { presentationTypeId, formData, plots } = req.body;
+        let { presentationTypeId, typeId, type, formData, plots } = req.body;
+        // Alias support
+        presentationTypeId = presentationTypeId || typeId || type;
 
         // Validate required fields
         if (!presentationTypeId || !formData) {
@@ -337,13 +339,24 @@ export {
  */
 const createAndDownload = async (req, res, next) => {
     try {
-        const { presentationTypeId, formData, plots } = req.body;
+        let { presentationTypeId, typeId, type, formData, plots } = req.body;
+        // Alias support
+        presentationTypeId = presentationTypeId || typeId || type;
 
         // Validate required fields
         if (!presentationTypeId || !formData) {
             return res.status(400).json({
                 success: false,
                 message: 'Presentation type ID and form data are required'
+            });
+        }
+
+        // Prevent 500 crash for invalid ID
+        const mongoose = await import('mongoose');
+        if (!mongoose.default.isValidObjectId(presentationTypeId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid Presentation Type ID format'
             });
         }
 

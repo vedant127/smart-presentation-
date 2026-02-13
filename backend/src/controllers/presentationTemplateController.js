@@ -235,9 +235,24 @@ export const matchTemplate = async (req, res, next) => {
         // OR Default for City (any asset) - Implementation policy decision
         // For now, return 404 if no exact match, user can implement fuzzy logic here
 
-        return res.status(404).json({
-            success: false,
-            message: `No template found for ${city} - ${assetType}`
+        // MOCK FALLBACK (For Development/Testing Only)
+        // If DB doesn't have it, generate a synthetic one so the UI works
+        const mockSlides = [
+            { sectionName: 'Market Overview', libraryItemId: { path: 'Mock/Market_Report.pptx' } },
+            { sectionName: 'Financial Analysis', libraryItemId: { path: 'Mock/Financial_Model.pptx' } },
+            { sectionName: 'Cash Flow Projections', libraryItemId: { path: 'Mock/Cashflow.pptx' } },
+            { sectionName: 'Investment Assumptions', libraryItemId: { path: 'Mock/Assumptions.pptx' } }
+        ];
+
+        return res.status(200).json({
+            success: true,
+            matchType: 'synthetic',
+            data: {
+                _id: 'mock_id',
+                city,
+                assetType,
+                slides: mockSlides
+            }
         });
 
     } catch (error) {

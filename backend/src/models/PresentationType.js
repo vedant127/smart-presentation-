@@ -23,7 +23,7 @@ const presentationTypeSchema = new mongoose.Schema({
         },
         type: {
             type: String,
-            enum: ['single', 'multiple'],
+            enum: ['single', 'multiple', 'text'],
             default: 'single'
         },
         options: [{

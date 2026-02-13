@@ -43,7 +43,7 @@ const seedData = async () => {
                 {
                     name: 'City',
                     type: 'single',
-                    options: ['Riyadh', 'Dubai', 'Abu Dhabi', 'Jeddah', 'Doha'],
+                    options: ['Riyadh', 'Dubai', 'Abu Dhabi', 'Jeddah', 'Doha', 'Mumbai', 'Bangalore', 'Delhi'],
                     required: true
                 },
                 {
@@ -179,7 +179,7 @@ const seedData = async () => {
         console.log('\nDatabase seeding completed successfully!\n');
         console.log('Admin Credentials:');
         console.log('Email: admin@smartpresentation.com');
-        console.log('Password: admin123\n');
+        console.log('   Password: admin123\n');
 
         process.exit(0);
 
