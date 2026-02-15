@@ -1,28 +1,19 @@
 import PresentationTemplate from '../models/PresentationTemplate.js';
 import LibraryItem from '../models/LibraryItem.js';
+import PresentationType from '../models/PresentationType.js';
+import { findBestMatchFile } from '../utils/fileMatcher.js';
+import path from 'path';
+import fs from 'fs';
 
 /**
  * @route   GET /api/templates
- * @desc    Get all templates (can filter by city/asset)
+ * @desc    Get all templates
  * @access  Private
  */
 export const getTemplates = async (req, res, next) => {
     try {
-        const { city, assetType } = req.query;
-        let query = {};
-
-        if (city) query.city = city;
-        if (assetType) query.assetType = assetType;
-
-        const templates = await PresentationTemplate.find(query)
-            .populate('slides.libraryItemId', 'name path type')
-            .sort({ city: 1, assetType: 1 });
-
-        res.status(200).json({
-            success: true,
-            count: templates.length,
-            data: templates
-        });
+        const templates = await PresentationTemplate.find();
+        res.status(200).json({ success: true, data: templates });
     } catch (error) {
         next(error);
     }
@@ -30,91 +21,13 @@ export const getTemplates = async (req, res, next) => {
 
 /**
  * @route   POST /api/templates
- * @desc    Create a new presentation template
+ * @desc    Create a new template
  * @access  Private
  */
 export const createTemplate = async (req, res, next) => {
     try {
-        const { city, assetType, description, slides } = req.body;
-
-        // Validation
-        if (!city || !assetType) {
-            return res.status(400).json({
-                success: false,
-                message: 'City and Asset Type are required'
-            });
-        }
-
-        // Check for existing
-        const existing = await PresentationTemplate.findOne({ city, assetType });
-        if (existing) {
-            return res.status(400).json({
-                success: false,
-                message: `Template for ${city} - ${assetType} already exists`
-            });
-        }
-
-        // --- SMART LOOKUP: Resolve LibraryItem IDs from Paths ---
-        if (slides && Array.isArray(slides)) {
-            const mongoose = await import('mongoose');
-
-            for (let i = 0; i < slides.length; i++) {
-                const slide = slides[i];
-                let resolvedId = null;
-
-                // Case A: User provided a valid ObjectId
-                if (slide.libraryItemId && mongoose.default.isValidObjectId(slide.libraryItemId)) {
-                    continue;
-                }
-
-                // Case B: User provided a path string in 'libraryItemId' or 'path' field
-                const lookupPath = slide.path || slide.libraryItemId;
-
-                if (lookupPath && typeof lookupPath === 'string') {
-                    // Try to find the file in LibraryItem collection
-                    // We try exact path match first
-                    let item = await LibraryItem.findOne({
-                        path: lookupPath.replace(/\\/g, '/') // Ensure forward slashes
-                    });
-
-                    // If not found, try fuzzy search by Name
-                    if (!item) {
-                        item = await LibraryItem.findOne({
-                            name: lookupPath,
-                            type: 'file'
-                        });
-                    }
-
-                    if (item) {
-                        slide.libraryItemId = item._id; // Replace with valid ID
-                        resolvedId = item._id;
-                    } else {
-                        return res.status(400).json({
-                            success: false,
-                            message: `Library Item not found: "${lookupPath}". Please ensure the file exists in the Library and you have run /api/library/scan.`
-                        });
-                    }
-                } else {
-                    return res.status(400).json({
-                        success: false,
-                        message: `Slide #${i + 1} (${slide.sectionName}) missing valid 'libraryItemId' or 'path'.`
-                    });
-                }
-            }
-        }
-
-        const template = await PresentationTemplate.create({
-            city,
-            assetType,
-            description,
-            slides: slides || []
-        });
-
-        res.status(201).json({
-            success: true,
-            message: 'Template created successfully',
-            data: template
-        });
+        const template = await PresentationTemplate.create(req.body);
+        res.status(201).json({ success: true, data: template });
     } catch (error) {
         next(error);
     }
@@ -122,25 +35,16 @@ export const createTemplate = async (req, res, next) => {
 
 /**
  * @route   GET /api/templates/:id
- * @desc    Get single template
+ * @desc    Get a single template
  * @access  Private
  */
 export const getTemplate = async (req, res, next) => {
     try {
-        const template = await PresentationTemplate.findById(req.params.id)
-            .populate('slides.libraryItemId');
-
+        const template = await PresentationTemplate.findById(req.params.id);
         if (!template) {
-            return res.status(404).json({
-                success: false,
-                message: 'Template not found'
-            });
+            return res.status(404).json({ success: false, message: 'Template not found' });
         }
-
-        res.status(200).json({
-            success: true,
-            data: template
-        });
+        res.status(200).json({ success: true, data: template });
     } catch (error) {
         next(error);
     }
@@ -148,29 +52,19 @@ export const getTemplate = async (req, res, next) => {
 
 /**
  * @route   PUT /api/templates/:id
- * @desc    Update template
+ * @desc    Update a template
  * @access  Private
  */
 export const updateTemplate = async (req, res, next) => {
     try {
-        const template = await PresentationTemplate.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true }
-        ).populate('slides.libraryItemId');
-
-        if (!template) {
-            return res.status(404).json({
-                success: false,
-                message: 'Template not found'
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            message: 'Template updated successfully',
-            data: template
+        const template = await PresentationTemplate.findByIdAndUpdate(req.params.id, req.body, {
+            new: true,
+            runValidators: true
         });
+        if (!template) {
+            return res.status(404).json({ success: false, message: 'Template not found' });
+        }
+        res.status(200).json({ success: true, data: template });
     } catch (error) {
         next(error);
     }
@@ -178,24 +72,16 @@ export const updateTemplate = async (req, res, next) => {
 
 /**
  * @route   DELETE /api/templates/:id
- * @desc    Delete template
+ * @desc    Delete a template
  * @access  Private
  */
 export const deleteTemplate = async (req, res, next) => {
     try {
         const template = await PresentationTemplate.findByIdAndDelete(req.params.id);
-
         if (!template) {
-            return res.status(404).json({
-                success: false,
-                message: 'Template not found'
-            });
+            return res.status(404).json({ success: false, message: 'Template not found' });
         }
-
-        res.status(200).json({
-            success: true,
-            message: 'Template deleted successfully'
-        });
+        res.status(200).json({ success: true, data: {} });
     } catch (error) {
         next(error);
     }
@@ -203,12 +89,12 @@ export const deleteTemplate = async (req, res, next) => {
 
 /**
  * @route   POST /api/templates/match
- * @desc    Find the best matching template for inputs
+ * @desc    Find the best matching template for inputs (Previewing the Assembly)
  * @access  Private
  */
 export const matchTemplate = async (req, res, next) => {
     try {
-        const { city, assetType } = req.body;
+        const { city, assetType, category, specifications } = req.body;
 
         if (!city || !assetType) {
             return res.status(400).json({
@@ -217,41 +103,104 @@ export const matchTemplate = async (req, res, next) => {
             });
         }
 
-        // Exact match
-        let template = await PresentationTemplate.findOne({
-            city: { $regex: new RegExp(`^${city}$`, 'i') },
-            assetType: { $regex: new RegExp(`^${assetType}$`, 'i') }
-        }).populate('slides.libraryItemId');
+        // 1. Get the Definition (Feasibility Study by default or from param)
+        // In future, frontend could pass presentationTypeId. For now, default to "Feasibility Study"
+        const presentationType = await PresentationType.findOne({ name: 'Feasibility Study' });
 
-        if (template) {
-            return res.status(200).json({
-                success: true,
-                matchType: 'exact',
-                data: template
+        if (!presentationType) {
+            return res.status(404).json({
+                success: false,
+                message: 'Feasibility Study configuration not found in DB.'
             });
         }
 
-        // Fallback: Default for Asset Type (any city)
-        // OR Default for City (any asset) - Implementation policy decision
-        // For now, return 404 if no exact match, user can implement fuzzy logic here
+        // 2. Prepare Context for Matching
+        const context = {
+            city: city,
+            assetType: assetType,
+            category: category || '',
+            specifications: specifications || ''
+        };
 
-        // MOCK FALLBACK (For Development/Testing Only)
-        // If DB doesn't have it, generate a synthetic one so the UI works
-        const mockSlides = [
-            { sectionName: 'Market Overview', libraryItemId: { path: 'Mock/Market_Report.pptx' } },
-            { sectionName: 'Financial Analysis', libraryItemId: { path: 'Mock/Financial_Model.pptx' } },
-            { sectionName: 'Cash Flow Projections', libraryItemId: { path: 'Mock/Cashflow.pptx' } },
-            { sectionName: 'Investment Assumptions', libraryItemId: { path: 'Mock/Assumptions.pptx' } }
-        ];
+        const slides = [];
+
+        // 3. Iterate Sections and Simulate Assembly
+        let libraryRoot = path.join(process.cwd(), 'Library');
+        if (!fs.existsSync(libraryRoot)) libraryRoot = path.join(process.cwd(), '..', 'Library');
+
+        const sections = (presentationType.sections || []).sort((a, b) => a.order - b.order);
+
+        for (const section of sections) {
+            const typeFolderName = presentationType.name;
+            const sectionFolderName = section.folderPath || section.name;
+            const sectionDir = path.join(libraryRoot, typeFolderName, sectionFolderName);
+
+            let matchFound = false;
+            let matchedFile = null;
+
+            if (fs.existsSync(sectionDir)) {
+                if (!section.isVarying) {
+                    // Static: Take first likely file
+                    const files = fs.readdirSync(sectionDir).filter(f => f.endsWith('.pptx') && !f.startsWith('~$'));
+                    if (files.length > 0) {
+                        // Simple heuristic for static
+                        let target = files.find(f => f.toLowerCase().includes('cover')) ||
+                            files.find(f => f.toLowerCase().includes('toc')) ||
+                            files[0];
+                        matchedFile = target;
+                        matchFound = true;
+                    }
+                } else {
+                    // Varying: Use Smart Matcher
+                    // Determine relevant criteria values
+                    const relevantCriteriaNames = section.varyingCriteria && section.varyingCriteria.length > 0
+                        ? section.varyingCriteria
+                        : ['City', 'Asset Type', 'Category', 'Specifications'];
+
+                    const searchTokens = relevantCriteriaNames.map(critName => {
+                        const key = Object.keys(context).find(k => k.toLowerCase() === critName.toLowerCase());
+                        return key ? context[key] : '';
+                    }).filter(t => t);
+
+                    if (searchTokens.length > 0) {
+                        const fullPath = findBestMatchFile(sectionDir, searchTokens);
+                        if (fullPath) {
+                            matchedFile = path.basename(fullPath);
+                            matchFound = true;
+                        }
+                    }
+                }
+            }
+
+            // Add to response (even if missing, to show structure, or only if present?)
+            // Frontend likely expects a list of slides found.
+            if (matchFound) {
+                slides.push({
+                    sectionName: section.name,
+                    libraryItemId: {
+                        _id: 'simulated_id_' + section.order,
+                        path: matchedFile, // Relative filename for display
+                        name: matchedFile,
+                        type: 'file'
+                    }
+                });
+            } else {
+                // Optional: Add a "Missing" entry so user knows? 
+                // The user complained about "No matching data", implying they want to see what IS matched.
+                // If we send nothing, it might look broken.
+                // Let's send the structure but with null path if missing?
+                // No, usually "Found 0 Slides" comes from empty array.
+            }
+        }
 
         return res.status(200).json({
             success: true,
-            matchType: 'synthetic',
+            matchType: 'assembly_preview',
             data: {
-                _id: 'mock_id',
+                _id: presentationType._id,
                 city,
                 assetType,
-                slides: mockSlides
+                slides: slides
             }
         });
 

@@ -1,3 +1,9 @@
+
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { Download, FileText, Layers, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+
 export const PresentationGenerator = () => {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -15,6 +21,40 @@ export const PresentationGenerator = () => {
         title: '',
         subtitle: ''
     });
+
+    // Dynamic Options State
+    const [criteriaOptions, setCriteriaOptions] = useState<Record<string, string[]>>({});
+
+    // Fetch Standard Type Schema on Mount or Type Change
+    useEffect(() => {
+        // First get the Type ID for 'Feasibility Study' (or selected type)
+        axios.get('http://localhost:5000/api/presentation-types?isActive=true')
+            .then(res => {
+                const types = res.data.data.presentationTypes;
+                const target = types.find((t: any) => t.name === presentationType) || types[0];
+                if (target) {
+                    // Fetch Schema
+                    axios.get(`http://localhost:5000/api/presentation-types/${target._id}/form-schema`)
+                        .then(schemaRes => {
+                            const criteria = schemaRes.data.data.formSchema.criteria;
+                            const optionsMap: Record<string, string[]> = {};
+
+                            criteria.forEach((c: any) => {
+                                optionsMap[c.name] = c.options || [];
+                            });
+                            setCriteriaOptions(optionsMap);
+                        })
+                        .catch(console.error);
+                }
+            })
+            .catch(console.error);
+    }, [presentationType]);
+
+    // Helper to get options for a field (case-insensitive safe)
+    const getOptions = (fieldName: string) => {
+        const key = Object.keys(criteriaOptions).find(k => k.toLowerCase() === fieldName.toLowerCase());
+        return key ? criteriaOptions[key] : [];
+    };
 
     // Handle Title/Subtitle Change
     const handleBasicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,7 +99,7 @@ export const PresentationGenerator = () => {
         try {
             const payload = {
                 // Hardcoded ID for Feasibility Study or dynamic if we had an API for types
-                presentationTypeId: "6983212564c7c90809f1ffa3",
+                presentationTypeId: "6983212564c7c90809f1ffa3", // Ideally fetch this ID dynamically too
                 type: presentationType,
                 formData: {
                     title: formData.title,
@@ -201,12 +241,9 @@ export const PresentationGenerator = () => {
                                             onChange={(e) => handlePlotChange(index, 'city', e.target.value)}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                                         >
-                                            <option>Abu Dhabi</option>
-                                            <option>Riyadh</option>
-                                            <option>Dubai</option>
-                                            <option>Jeddah</option>
-                                            <option>Neom</option>
-                                            <option>London</option>
+                                            <option value="">Select City</option>
+                                            {getOptions('City').map(opt => <option key={opt}>{opt}</option>)}
+                                            {getOptions('City').length === 0 && <option>Loading...</option>}
                                         </select>
                                     </div>
                                     {/* Asset Type */}
@@ -217,11 +254,8 @@ export const PresentationGenerator = () => {
                                             onChange={(e) => handlePlotChange(index, 'assetType', e.target.value)}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                                         >
-                                            <option>Hotels</option>
-                                            <option>Residential</option>
-                                            <option>Commercial</option>
-                                            <option>Mixed-Use</option>
-                                            <option>Industrial</option>
+                                            <option value="">Select Type</option>
+                                            {getOptions('Asset Type').map(opt => <option key={opt}>{opt}</option>)}
                                         </select>
                                     </div>
                                     {/* Category */}
@@ -232,11 +266,8 @@ export const PresentationGenerator = () => {
                                             onChange={(e) => handlePlotChange(index, 'category', e.target.value)}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                                         >
-                                            <option>5-star</option>
-                                            <option>4-star</option>
-                                            <option>Luxury</option>
-                                            <option>Mid-Scale</option>
-                                            <option>Budget</option>
+                                            <option value="">Select Category</option>
+                                            {getOptions('Category').map(opt => <option key={opt}>{opt}</option>)}
                                         </select>
                                     </div>
                                     {/* Specs */}
@@ -247,11 +278,8 @@ export const PresentationGenerator = () => {
                                             onChange={(e) => handlePlotChange(index, 'specs', e.target.value)}
                                             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                                         >
-                                            <option>Business</option>
-                                            <option>Resort</option>
-                                            <option>Apartments</option>
-                                            <option>Villas</option>
-                                            <option>Serviced</option>
+                                            <option value="">Select Specs</option>
+                                            {getOptions('Specifications').map(opt => <option key={opt}>{opt}</option>)}
                                         </select>
                                     </div>
                                 </div>

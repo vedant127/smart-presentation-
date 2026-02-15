@@ -343,11 +343,18 @@ const createAndDownload = async (req, res, next) => {
         // Alias support
         presentationTypeId = presentationTypeId || typeId || type;
 
+        // Ensure formData exists
+        formData = formData || {};
+
+        // Normalize formData keys for consistency
+        if (req.body.project_name) formData.projectTitle = req.body.project_name;
+        if (req.body.client_name) formData.clientName = req.body.client_name;
+
         // Validate required fields
-        if (!presentationTypeId || !formData) {
+        if (!presentationTypeId) {
             return res.status(400).json({
                 success: false,
-                message: 'Presentation type ID and form data are required'
+                message: 'Presentation type ID is required'
             });
         }
 
@@ -403,9 +410,10 @@ const createAndDownload = async (req, res, next) => {
             return res.download(result.filePath, result.fileName);
         }
 
-        // --- OLD MATCHING ENGINE (Fallback for non-plot types) ---
-        // 1. Try to find a specific template for this City + Asset Type
-        // ... existing logic ...
+        // --- OLD MATCHING ENGINE (Fallback for legacy types without sections) ---
+        // Only reachable if sections are empty (which shouldn't happen for Feasibility/Credential)
+        console.warn("⚠️ Using Legacy Fallback (No sections defined)");
+
         const city = formData.city || "Mumbai"; // Default fallback
         const projectType = formData.assetType || formData.projectType || "Residential";
 

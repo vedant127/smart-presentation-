@@ -5,11 +5,11 @@ import { Automizer, modify } from 'pptx-automizer';
 import { v4 as uuidv4 } from 'uuid';
 import { getCityData } from '../data/cityData.js';
 import { addInvestmentAssumptionsTable, addROIAnalysisTable, addMarketAnalysisContent, addMarketOverviewContent, addSupplyAnalysisContent, addDemandDriversContent, addKeyIndicatorsContent } from '../utils/slideContentHelpers.js';
-import { generateSlideContent } from './aiContentService.js';
 import { generateTOCTitles } from '../utils/titleGenerator.js';
 import { addROIChart, addCashFlowChart, addMarketGrowthChart, addInvestmentBreakdownChart, addSupplyChart, addDemandChart, addPriceTrendsChart } from '../utils/chartGenerator.js';
 import { generateInvestmentNotes, generateROINotes, generateMarketNotes, generateCashFlowNotes, generateCoverNotes } from '../utils/speakerNotesGenerator.js';
-import { validateFormData } from '../utils/inputValidator.js';  // ✅ NEW: Auto-correct typos
+import { validateFormData } from '../utils/inputValidator.js';
+import { findBestMatchFile } from '../utils/fileMatcher.js';
 
 const log = console.log;
 // AIRE Design System Colors
@@ -107,6 +107,10 @@ export const generatePresentation = async ({ presentationType, formData, plots, 
             { name: '04_Executive Summary', type: 'UNVARYING' },
             { name: '05_Site Assessment', type: 'UNVARYING' },
             { name: '06_Market Overview', type: 'VARYING' },
+            { name: '07_Development Recommendations Part 1', type: 'VARYING' },
+            { name: '08_Development Recommendations Part 2', type: 'VARYING' },
+            { name: '09_Development Recommendations Part 3', type: 'VARYING' },
+            { name: '10_Financial & Investment Analysis', type: 'VARYING' },
             { name: '11_Disclaimer', type: 'UNVARYING' }
         ];
     }
@@ -300,10 +304,6 @@ export const generatePresentationFromTemplate = async ({ template, formData, use
 };
 
 /**
- * Generate Presentation dynamically from plots (Client Form Logic)
- * Follows the 5-step matching algorithm
- */
-/**
  * THE SYSTEM (Spotify-like Assembly Engine)
  * "Task 2: Slide assembly logic from structured folders"
  * 
@@ -316,18 +316,18 @@ export const generatePresentationFromTemplate = async ({ template, formData, use
  *    - Pull that exact file from the Section Folder (Album).
  * 4. Merge into Master Playlist.
  */
-export const assemblePresentation = async ({ presentationType, formData, plots }) => {
+export const assemblePresentation = async ({ presentationType, formData, plots, userId }) => {
     console.log(`\n🏭 SYSTEM: Starting Assembly for "${presentationType.name}"`);
-    console.log(`   Plots (Contexts): ${plots.length}`);
+    console.log(`   Plots (Contexts): ${plots ? plots.length : 0}`);
 
-    // 1. Initialize Automizer (The Player)
+    // 1. Initialize Automizer
     const automizer = new Automizer({
         templateDir: process.cwd(),
-        outputDir: path.join(process.cwd(), 'generated')
+        outputDir: path.join(process.cwd(), 'generated'),
+        removeExistingSlides: true
     });
 
-    // 1.1 Load Root Template (The Stage)
-    // 1.1 Load Root Template (The Stage)
+    // 1.1 Load Root Template
     let libraryRoot = path.join(process.cwd(), 'Library');
     if (!fs.existsSync(libraryRoot)) {
         libraryRoot = path.join(process.cwd(), '..', 'Library');
@@ -337,22 +337,31 @@ export const assemblePresentation = async ({ presentationType, formData, plots }
     if (fs.existsSync(rootTemplatePath)) {
         automizer.loadRoot(rootTemplatePath);
     } else {
-        // Specific error logging for 500 debugging
         console.error(`CRITICAL: RootTemplate.pptx missing at ${rootTemplatePath}`);
         throw new Error(`SYSTEM ERROR: RootTemplate.pptx missing at ${rootTemplatePath}`);
     }
 
     // 2. Normalize Plots Data
-    // Ensure we have an array of data objects, even if it's just global formData
-    const plotContexts = (plots && plots.length > 0)
+    // Ensure we have an array of data objects.
+    // If 'plots' is provided (Multi-Plot), use it.
+    // If not, use 'formData' as a single context (Single-Site).
+    let plotContexts = (plots && plots.length > 0)
         ? plots.map(p => p.criteria || p.data || p)
-        : [formData]; // Fallback to global data as single context
+        : [formData];
+
+    // Validate contexts to ensure they have minimal data
+    plotContexts = plotContexts.filter(ctx => ctx && Object.keys(ctx).length > 0);
 
     // 3. Iterate Sections (The Playlist)
+    // defined in the database (or seed)
     const sections = (presentationType.sections || []).sort((a, b) => a.order - b.order);
 
+    if (sections.length === 0) {
+        throw new Error("Presentation Type has no sections defined. Cannot assemble.");
+    }
+
     for (const section of sections) {
-        console.log(`\n🎵 Processing Section: "${section.name}"`);
+        console.log(`\n🎵 Processing Section: "${section.name}" (${section.isVarying ? 'Varying' : 'Fixed'})`);
 
         // Locate Album (Folder)
         const typeFolderName = presentationType.name;
@@ -360,148 +369,111 @@ export const assemblePresentation = async ({ presentationType, formData, plots }
         const sectionDir = path.join(libraryRoot, typeFolderName, sectionFolderName);
 
         if (!fs.existsSync(sectionDir)) {
-            console.warn(`MISSING ALBUM: Folder not found at ${sectionDir}`);
+            console.warn(`   ⚠️ MISSING ALBUM: Folder not found at ${sectionDir}`);
             continue;
         }
 
-        // Logic: Should this section play once (Static) or repeat per context (Varying)?
-        if (section.isVarying) {
-            // VARYING: Needs to match specific files for each plot context
-            // Identify which criteria drive this section (e.g., only "City" matters? or "City + Asset"?)
-            // Fallback: Use ALL defined criteria if varyingCriteria is empty.
-
-            const relevantCriteriaNames = (section.varyingCriteria && section.varyingCriteria.length > 0)
-                ? section.varyingCriteria
-                : presentationType.criteria.map(c => c.name);
-
-            // Deduplicate keys for this section to avoid repeating identical slides
-            // (e.g. if Plot 1 and 2 are both "Mumbai", only show "Mumbai Market Overview" once)
-            // Helper: XML Replacer Factory
-            const createReplacer = (dataContext) => {
-                return (xml) => {
-                    if (typeof xml !== 'string') return xml;
-
-                    let modifiedXml = xml;
-                    if (!dataContext) return modifiedXml;
-
-                    Object.keys(dataContext).forEach(key => {
-                        const val = safeText(dataContext[key]);
-                        const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        const regex = new RegExp(`{{${safeKey}}}`, 'g');
-                        modifiedXml = modifiedXml.replace(regex, val);
-                    });
-                    return modifiedXml;
-                };
-            };
-
-            // Deduplicate keys for this section to avoid repeating identical slides
-            // (e.g. if Plot 1 and 2 are both "Mumbai", only show "Mumbai Market Overview" once)
-            const generatedKeys = new Set();
-
-            for (const context of plotContexts) {
-                // Build Key: "val1 + val2 + val3"
-                const keyParts = relevantCriteriaNames.map(critName => {
-                    // Find value efficiently (case-insensitive key match)
-                    const key = Object.keys(context).find(k => k.toLowerCase() === critName.toLowerCase());
-                    const val = key ? context[key] : '';
-                    return val.toLowerCase().trim();
-                });
-
-                // Remove empty parts (e.g. if a criterion was not filled)
-                const validParts = keyParts.filter(p => p !== '');
-
-                if (validParts.length === 0) {
-                    console.warn(`   ⚠️ Skipping context: No metadata found for criteria [${relevantCriteriaNames.join(', ')}]`);
-                    continue;
-                }
-
-                const filenameKey = validParts.join(' + '); // The "Song Name"
-                const fullFilename = `${filenameKey}.pptx`;
-
-                if (generatedKeys.has(filenameKey)) continue; // Already added this track
-                generatedKeys.add(filenameKey);
-
-                const filePath = path.join(sectionDir, fullFilename);
-
-                if (fs.existsSync(filePath)) {
-                    // Safety Check: Is file valid?
-                    if (fs.statSync(filePath).size === 0) {
-                        console.warn(`   ⚠️ SKIPPED CORRUPT FILE (0 bytes): "${fullFilename}"`);
-                        continue;
-                    }
-
-                    console.log(`   ▶️ Adding Track: "${fullFilename}" (Applying Data...)`);
-                    try {
-                        const loadKey = `vary_${section.order}_${filenameKey.replace(/[^a-z0-9]/g, '')}_${uuidv4()}`;
-                        automizer.load(filePath, loadKey);
-
-                        // Apply Template Data Fusion
-                        automizer.addSlide(loadKey, 1, (slide) => {
-                            slide.modify(createReplacer(context));
-                        });
-
-                    } catch (err) {
-                        console.error(`   ❌ ERROR Adding Track "${fullFilename}":`, err.message);
-                    }
-                } else {
-                    console.warn(`   ❌ Track Not Found: "${fullFilename}" (Skipping)`);
-                }
-            }
-
-        } else {
-            // UNVARYING (Static)
+        // --- UNVARYING SECTIONS ---
+        // Added ONCE, regardless of how many plots there are.
+        if (!section.isVarying) {
+            // Find "Best" unvarying file. usually just the first one or specific name.
             const files = fs.readdirSync(sectionDir).filter(f => f.endsWith('.pptx') && !f.startsWith('~$'));
 
             if (files.length > 0) {
-                const filename = files[0];
-                const filePath = path.join(sectionDir, filename);
+                // Heuristic: specific names or first available
+                let targetFile = files.find(f => f.toLowerCase().includes('cover')) ||
+                    files.find(f => f.toLowerCase().includes('toc')) ||
+                    files[0];
 
+                const filePath = path.join(sectionDir, targetFile);
                 if (fs.statSync(filePath).size > 0) {
-                    console.log(`   ▶️ Adding Static Track: "${filename}"`);
+                    console.log(`   ▶️ Adding Static Track: "${targetFile}"`);
                     try {
-                        // Helper: XML Replacer Factory (Inline for Static Block)
-                        const createReplacer = (dataContext) => {
-                            return (xml) => {
-                                if (typeof xml !== 'string') {
-                                    // ppx-automizer sometimes passes objects depending on context?
-                                    // Or if it's the slide object itself?
-                                    // Just return it to avoid crash.
-                                    return xml;
-                                }
-
-                                let modifiedXml = xml;
-                                if (!dataContext) return modifiedXml;
-
-                                Object.keys(dataContext).forEach(key => {
-                                    const val = safeText(dataContext[key]);
-                                    const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    const regex = new RegExp(`{{${safeKey}}}`, 'g');
-                                    modifiedXml = modifiedXml.replace(regex, val);
-                                });
-                                return modifiedXml;
-                            };
-                        };
-
                         const loadKey = `static_${section.order}_${uuidv4()}`;
                         automizer.load(filePath, loadKey);
+                        // Add slide (with simple replacer for global data like Project Title)
                         automizer.addSlide(loadKey, 1, (slide) => {
-                            slide.modify(createReplacer(formData));
+                            slide.modify(createStaticReplacer(formData));
                         });
                     } catch (err) {
-                        console.error(`   ❌ ERROR Adding Static Track "${filename}":`, err.message);
+                        console.error(`   ❌ ERROR Adding Static Track:`, err.message);
                     }
-                } else {
-                    console.warn(`   ⚠️ SKIPPED CORRUPT FILE (0 bytes): "${filename}"`);
                 }
             } else {
-                console.warn(`   ⚠️ Empty Album: No PPTX files in ${section.name}`);
+                console.warn(`   ⚠️ Empty Section Folder: ${section.name}`);
+            }
+        }
+
+        // --- VARYING SECTIONS ---
+        // Added PER UNIQUE CRITERIA SET (Deduplicated)
+        else {
+            const addedFilesForSection = new Set(); // Track filenames added for this section to prevent duplicates
+
+            // Determine which criteria matter for this section
+            // e.g. Market Overview varies by [City], but maybe not by [Specifications]
+            const relevantCriteriaNames = (section.varyingCriteria && section.varyingCriteria.length > 0)
+                ? section.varyingCriteria
+                : presentationType.criteria.map(c => c.name); // Fallback: Use all criteria
+
+            for (const context of plotContexts) {
+                // 1. Build Search Tokens based on Relevant Criteria
+                const searchTokens = [];
+                for (const critName of relevantCriteriaNames) {
+                    // Find matching key in context (case-insensitive)
+                    const key = Object.keys(context).find(k => k.toLowerCase() === critName.toLowerCase());
+                    if (key && context[key]) {
+                        searchTokens.push(context[key]);
+                    }
+                }
+
+                if (searchTokens.length === 0) {
+                    // If no relevant criteria found in this plot, maybe skip or use 'Default'?
+                    // Just skip to be safe.
+                    continue;
+                }
+
+                // 2. Find File using Robust Matcher
+                const bestFilePath = findBestMatchFile(sectionDir, searchTokens);
+
+                if (!bestFilePath) {
+                    // Logic: If file missing, SILENTLY SKIP as requested (no placeholders)
+                    console.log(`   (Skipping: No match for [${searchTokens.join(', ')}])`);
+                    continue;
+                }
+
+                const filename = path.basename(bestFilePath);
+
+                // 3. Deduplication
+                // If we already added "Dubai Market Overview.pptx" for this section, don't add it again.
+                // Even if Plot 1 is Dubai Res and Plot 2 is Dubai Comm, if the file found is just "Dubai.pptx", it's the same file.
+                if (addedFilesForSection.has(filename)) {
+                    continue;
+                }
+
+                // 4. Add the Slide
+                if (fs.existsSync(bestFilePath)) {
+                    console.log(`   ▶️ Adding Varying Track: "${filename}" (matched: ${searchTokens.join('+')})`);
+                    addedFilesForSection.add(filename);
+
+                    try {
+                        const loadKey = `vary_${section.order}_${filename.replace(/[^a-z0-9]/gi, '_')}_${uuidv4()}`;
+                        automizer.load(bestFilePath, loadKey);
+
+                        // We replace data using THIS context (Plot specific)
+                        automizer.addSlide(loadKey, 1, (slide) => {
+                            slide.modify(createStaticReplacer(context));
+                        });
+                    } catch (err) {
+                        console.error(`   ❌ ERROR Adding Varying Track:`, err.message);
+                    }
+                }
             }
         }
     }
 
     // 4. Produce Record (Output)
     const runId = uuidv4();
-    const finalFileName = `${(formData.title || 'Presentation').replace(/[^a-zA-Z0-9]/g, '_')}_${runId}.pptx`;
+    const finalFileName = `${(formData.title || formData.projectTitle || 'Presentation').replace(/[^a-zA-Z0-9]/g, '_')}_${runId}.pptx`;
 
     let outputDir = path.join(process.cwd(), 'generated');
     if (!fs.existsSync(path.join(process.cwd(), 'Library'))) {
@@ -509,7 +481,7 @@ export const assemblePresentation = async ({ presentationType, formData, plots }
     }
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-    const result = await automizer.write(finalFileName);
+    await automizer.write(finalFileName);
 
     console.log(`\n✅ SYSTEM: Assembly Complete.`);
     console.log(`   Output: ${finalFileName}`);
@@ -518,5 +490,23 @@ export const assemblePresentation = async ({ presentationType, formData, plots }
         fileName: finalFileName,
         filePath: path.join(outputDir, finalFileName),
         fileSize: 0
+    };
+};
+
+// Helper: Simple XML Replacer for Static/Assembly Mode
+const createStaticReplacer = (dataContext) => {
+    return (xml) => {
+        if (typeof xml !== 'string') return xml;
+        let modifiedXml = xml;
+        if (!dataContext) return modifiedXml;
+
+        Object.keys(dataContext).forEach(key => {
+            const val = safeText(dataContext[key]);
+            const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Regex to match {{ Key }} or {{Key}} case-insensitive
+            const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, 'gi');
+            modifiedXml = modifiedXml.replace(regex, val);
+        });
+        return modifiedXml;
     };
 };
