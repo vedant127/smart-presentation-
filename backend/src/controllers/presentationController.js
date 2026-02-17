@@ -1,8 +1,6 @@
 import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
-import PresentationTemplate from '../models/PresentationTemplate.js';
-import { generatePresentation, generatePresentationFromTemplate, assemblePresentation } from '../services/presentationService.js';
-import { selectSlides } from '../services/slideSelectionService.js';
+import { assemblePresentation } from '../services/presentationServiceNew.js';
 
 
 /**
@@ -54,24 +52,41 @@ const generate = async (req, res, next) => {
             });
         }
 
-        // Generate presentation
-        const result = await generatePresentation({
+        // Generate presentation (using NEW Assembly Engine)
+        // Use guestId if no authentication
+        const guestId = '000000000000000000000000';
+        const userId = req.user ? req.user._id : guestId;
+
+        console.log(`Starting System Assembly for ${presentationType.name} (via /generate)`);
+
+        const result = await assemblePresentation({
             presentationType,
             formData,
             plots: plots || [],
-            userId: req.user._id
+            userId
         });
+
+        // Get file size for history
+        let fileSize = 0;
+        try {
+            const fs = await import('fs');
+            if (fs.existsSync(result.filePath)) {
+                fileSize = fs.statSync(result.filePath).size;
+            }
+        } catch (e) {
+            console.warn("Could not calculate file size:", e);
+        }
 
         // Save to history
         const history = await PresentationHistory.create({
-            user: req.user._id,
+            user: userId,
             presentationType: presentationType._id,
             presentationTypeName: presentationType.name,
             formData,
             plots: plots || [],
             generatedFileName: result.fileName,
             filePath: result.filePath,
-            fileSize: result.fileSize,
+            fileSize: fileSize,
             status: 'completed'
         });
 
@@ -83,7 +98,7 @@ const generate = async (req, res, next) => {
                     id: history._id,
                     fileName: result.fileName,
                     filePath: result.filePath,
-                    fileSize: result.fileSize,
+                    fileSize: fileSize,
                     downloadUrl: `/api/presentations/download/${history._id}`
                 }
             }
@@ -94,8 +109,11 @@ const generate = async (req, res, next) => {
 
         // Save failed attempt to history
         if (req.body.presentationTypeId) {
+            const guestId = '000000000000000000000000';
+            const userId = req.user ? req.user._id : guestId;
+
             await PresentationHistory.create({
-                user: req.user._id,
+                user: userId,
                 presentationType: req.body.presentationTypeId,
                 presentationTypeName: 'Unknown',
                 formData: req.body.formData || {},
@@ -120,7 +138,10 @@ const getHistory = async (req, res, next) => {
     try {
         const { page = 1, limit = 10, status } = req.query;
 
-        const filter = { user: req.user._id };
+        const guestId = '000000000000000000000000';
+        const userId = req.user ? req.user._id : guestId;
+
+        const filter = { user: userId };
         if (status) {
             filter.status = status;
         }
@@ -161,9 +182,12 @@ const getHistory = async (req, res, next) => {
  */
 const getHistoryItem = async (req, res, next) => {
     try {
+        const guestId = '000000000000000000000000';
+        const userId = req.user ? req.user._id : guestId;
+
         const presentation = await PresentationHistory.findOne({
             _id: req.params.id,
-            user: req.user._id
+            user: userId
         }).populate('presentationType', 'name description');
 
         if (!presentation) {
@@ -190,19 +214,27 @@ const getHistoryItem = async (req, res, next) => {
  */
 const download = async (req, res, next) => {
     try {
-        const presentation = await PresentationHistory.findOne({
-            _id: req.params.id,
-            user: req.user._id
-        });
+        console.log(`\n Download Request for ID: ${req.params.id}`);
+
+        // Find presentation by ID only (no user check for development)
+        const presentation = await PresentationHistory.findById(req.params.id);
+
+        console.log(`   Found presentation:`, presentation ? 'YES' : 'NO');
 
         if (!presentation) {
+            console.log(` Presentation not found in database`);
             return res.status(404).json({
                 success: false,
                 message: 'Presentation not found'
             });
         }
 
+        console.log(`   Status: ${presentation.status}`);
+        console.log(`   File: ${presentation.generatedFileName}`);
+        console.log(`   Path: ${presentation.filePath}`);
+
         if (presentation.status !== 'completed') {
+            console.log(` Presentation not completed`);
             return res.status(400).json({
                 success: false,
                 message: 'Presentation is not ready for download'
@@ -214,8 +246,11 @@ const download = async (req, res, next) => {
         const path = await import('path');
 
         const filePath = path.resolve(presentation.filePath);
+        console.log(`   Resolved path: ${filePath}`);
+        console.log(`   File exists:`, fs.existsSync(filePath) ? 'YES' : 'NO');
 
         if (!fs.existsSync(filePath)) {
+            console.log(` File not found on disk`);
             return res.status(404).json({
                 success: false,
                 message: 'Presentation file not found'
@@ -225,15 +260,20 @@ const download = async (req, res, next) => {
         // Increment download count
         await presentation.incrementDownload();
 
+        console.log(`  Starting download...`);
+
         // Send file
         res.download(filePath, presentation.generatedFileName, (err) => {
             if (err) {
                 console.error('Download error:', err);
                 next(err);
+            } else {
+                console.log(` Download completed successfully`);
             }
         });
 
     } catch (error) {
+        console.error('Download endpoint error:', error);
         next(error);
     }
 };
@@ -245,9 +285,12 @@ const download = async (req, res, next) => {
  */
 const deleteHistory = async (req, res, next) => {
     try {
+        const guestId = '000000000000000000000000';
+        const userId = req.user ? req.user._id : guestId;
+
         const presentation = await PresentationHistory.findOneAndDelete({
             _id: req.params.id,
-            user: req.user._id
+            user: userId
         });
 
         if (!presentation) {
@@ -410,36 +453,9 @@ const createAndDownload = async (req, res, next) => {
             return res.download(result.filePath, result.fileName);
         }
 
-        // --- OLD MATCHING ENGINE (Fallback for legacy types without sections) ---
-        // Only reachable if sections are empty (which shouldn't happen for Feasibility/Credential)
-        console.warn("⚠️ Using Legacy Fallback (No sections defined)");
-
-        const city = formData.city || "Mumbai"; // Default fallback
-        const projectType = formData.assetType || formData.projectType || "Residential";
-
-        const template = await PresentationTemplate.findOne({
-            city: { $regex: new RegExp(`^${city}$`, 'i') },
-            assetType: { $regex: new RegExp(`^${projectType}$`, 'i') }
-        }).populate('slides.libraryItemId');
-
-        if (template) {
-            const result = await generatePresentationFromTemplate({
-                template,
-                formData,
-                userId
-            });
-            return res.download(result.filePath, result.fileName);
-        }
-
-        // If no template matched and no plots, maybe regular generation?
-        // Fallback to old service
-        const result = await generatePresentation({
-            presentationType,
-            formData,
-            plots: [],
-            userId
-        });
-        res.download(result.filePath, result.fileName);
+        // --- NO SECTIONS DEFINED - ERROR ---
+        console.error("Presentation type has no sections defined!");
+        throw new Error('Presentation type must have sections defined. Please configure sections in the database.');
 
     } catch (error) {
         console.error('\n[CreateDownload] ERROR:', error.message);

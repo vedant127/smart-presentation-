@@ -1,0 +1,19 @@
+{
+    "presentationTypeId": "6994cc931bad3fd15dc58933",
+    "formData": {
+        "title": "My Successful Project",
+        "subtitle": "Feasibility Study",
+        "clientName": "Test Client",
+        "plotCount": 1
+    },
+    "plots": [
+        {
+            "criteria": {
+                "City": "Mumbai",
+                "Asset Type": "Residential",
+                "Category": "Apartments",
+                "Specifications": "Luxury"
+            }
+        }
+    ]
+}

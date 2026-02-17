@@ -16,8 +16,14 @@ import libraryRoutes from './routes/libraryRoutes.js';
 import presentationTemplateRoutes from './routes/presentationTemplateRoutes.js';
 import templateDataRoutes from './routes/templateDataRoutes.js';
 
-// Load environment variables
-dotenv.config();
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables (force path to backend root)
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // Initialize Express app
 const app = express();

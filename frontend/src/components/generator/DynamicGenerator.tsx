@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Loader2, Download, FileText, Plus, Trash2, CheckCircle2 } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 export const DynamicGenerator = () => {
     const [types, setTypes] = useState<any[]>([]);
@@ -100,27 +99,54 @@ export const DynamicGenerator = () => {
         setSuccess(false);
 
         try {
-            // Prepare Payload
+            // Prepare Enhanced Payload for AI Integration
+            const enhancedFormData = {
+                // Core fields
+                title: formData.title,
+                projectName: formData.title, // Alias for AI
+                subtitle: formData.subtitle,
+                clientName: formData.clientName || 'Confidential Client',
+
+                // Add all criteria as top-level fields for AI context
+                ...formData,
+
+                // Extract first plot data as global context if plots enabled
+                ...(schema.enablePlots && plots.length > 0 ? plots[0].data : {}),
+
+                // Metadata
+                plotCount: plots.length,
+                presentationType: schema.name
+            };
+
             const payload = {
                 presentationTypeId: selectedTypeId,
-                formData: {
-                    ...formData,
-                    plotCount: plots.length
-                },
+                formData: enhancedFormData,
                 plots: schema.enablePlots ? plots.map(p => ({
-                    criteria: p.data
+                    criteria: p.data,
+                    data: p.data // Alias for compatibility
                 })) : []
             };
 
-            const response = await axios.post('http://localhost:5000/api/presentations/create-download', payload, {
-                responseType: 'blob',
-            });
+            console.log('🚀 Sending to backend:', payload);
 
-            // Download
+            // Use create-download endpoint for direct download
+            const response = await axios.post(
+                'http://localhost:5000/api/presentations/create-download',
+                payload,
+                {
+                    responseType: 'blob',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Download the file
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `${(formData.title || 'Presentation').replace(/\s+/g, '_')}_${Date.now()}.pptx`);
+            const fileName = `${(formData.title || 'Presentation').replace(/\s+/g, '_')}_${Date.now()}.pptx`;
+            link.setAttribute('download', fileName);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -128,6 +154,9 @@ export const DynamicGenerator = () => {
             // Cleanup
             window.URL.revokeObjectURL(url);
             setSuccess(true);
+
+            // Show success message
+            alert(`✅ Success! Your presentation "${formData.title}" has been generated and downloaded!`);
 
         } catch (err: any) {
             console.error("Presentation Generation Error:", err);
@@ -138,14 +167,14 @@ export const DynamicGenerator = () => {
                 reader.onload = () => {
                     try {
                         const errorJson = JSON.parse(reader.result as string);
-                        alert(`Generation Failed: ${errorJson.message || 'Unknown Error'}`);
+                        alert(`Generation Failed: ${errorJson.message || 'Unknown Error'}\n\nCheck the browser console for details.`);
                     } catch (e) {
-                        alert("Generation Failed: Internal Server Error");
+                        alert("Generation Failed: Internal Server Error\n\nCheck the backend console logs for details.");
                     }
                 };
                 reader.readAsText(err.response.data);
             } else {
-                alert(`Generation Failed: ${err.message || 'Network Error'}`);
+                alert(`Generation Failed: ${err.message || 'Network Error'}\n\nMake sure the backend server is running on http://localhost:5000`);
             }
         } finally {
             setIsGenerating(false);
@@ -185,7 +214,7 @@ export const DynamicGenerator = () => {
     return (
         <div className="max-w-4xl mx-auto pb-20">
             {/* Step 1: Type Selection */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+            <div className="mb-8 animate-fade-in">
                 <label className="block text-slate-400 mb-2 font-medium">Select Presentation Type</label>
                 <select
                     className="w-full text-lg bg-surface border border-slate-700 rounded-xl px-6 py-4 text-white focus:ring-2 focus:ring-primary shadow-lg"
@@ -195,11 +224,11 @@ export const DynamicGenerator = () => {
                     <option value="">-- Choose a Template --</option>
                     {types.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}
                 </select>
-            </motion.div>
+            </div>
 
             {/* Step 2: Dynamic Form */}
             {schema && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                <div className="space-y-8 animate-fade-in">
 
                     {/* Global Inputs */}
                     <div className="bg-surface border border-slate-700 rounded-2xl p-8 shadow-xl">
@@ -210,10 +239,11 @@ export const DynamicGenerator = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                             <div>
-                                <label className="block text-sm text-slate-400 mb-2">Project Title</label>
+                                <label className="block text-sm text-slate-400 mb-2">Project Title *</label>
                                 <input
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
                                     value={formData.title} onChange={e => handleGlobalChange('title', e.target.value)}
+                                    placeholder="e.g., Luxury Residences Dubai Marina"
                                 />
                             </div>
                             <div>
@@ -221,6 +251,15 @@ export const DynamicGenerator = () => {
                                 <input
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
                                     value={formData.subtitle} onChange={e => handleGlobalChange('subtitle', e.target.value)}
+                                    placeholder="e.g., Feasibility Study Report"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-2">Client Name</label>
+                                <input
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                                    value={formData.clientName || ''} onChange={e => handleGlobalChange('clientName', e.target.value)}
+                                    placeholder="e.g., ABC Developments Ltd"
                                 />
                             </div>
                         </div>
@@ -265,11 +304,9 @@ export const DynamicGenerator = () => {
 
                             <div className="space-y-4">
                                 {plots.map((plot, idx) => (
-                                    <motion.div
+                                    <div
                                         key={plot.id}
-                                        initial={{ x: -10, opacity: 0 }}
-                                        animate={{ x: 0, opacity: 1 }}
-                                        className="bg-slate-900/80 border border-slate-700 p-6 rounded-xl relative group px-10"
+                                        className="bg-slate-900/80 border border-slate-700 p-6 rounded-xl relative group px-10 animate-fade-in"
                                     >
                                         <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-primary to-indigo-600 rounded-l-xl"></span>
                                         <div className="absolute top-4 right-4">
@@ -287,7 +324,7 @@ export const DynamicGenerator = () => {
                                                 </div>
                                             ))}
                                         </div>
-                                    </motion.div>
+                                    </div>
                                 ))}
                             </div>
 
@@ -321,7 +358,7 @@ export const DynamicGenerator = () => {
                         </button>
                     </div>
 
-                </motion.div>
+                </div>
             )}
         </div>
     );

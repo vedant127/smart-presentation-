@@ -1,0 +1,145 @@
+{
+    "name": "Feasibility Study",
+    "plots_enabled": true,
+    "sections": [
+        {
+            "order": 1,
+            "name": "Cover Page",
+            "folder": "01_Cover Page",
+            "varying": false,
+            "filename": "cover.pptx"
+        },
+        {
+            "order": 2,
+            "name": "Table of Content",
+            "folder": "02_Table of Content",
+            "varying": false,
+            "filename": "toc.pptx"
+        },
+        {
+            "order": 3,
+            "name": "Project Background",
+            "folder": "03_Project Background",
+            "varying": false,
+            "filename": "project_background.pptx"
+        },
+        {
+            "order": 4,
+            "name": "Executive Summary",
+            "folder": "04_Executive Summary",
+            "varying": false,
+            "filename": "executive_summary.pptx"
+        },
+        {
+            "order": 5,
+            "name": "Site Assessment",
+            "folder": "05_Site Assessment",
+            "varying": false,
+            "filename": "site_assessment.pptx"
+        },
+        {
+            "order": 6,
+            "name": "Market Overview",
+            "folder": "06_Market Overview",
+            "varying": true,
+            "varies_by": [
+                "City",
+                "Asset Type",
+                "Category",
+                "Specifications"
+            ]
+        },
+        {
+            "order": 7,
+            "name": "Dev Recommendations Part 1",
+            "folder": "07_Dev Recommendations Part 1",
+            "varying": false,
+            "filename": "dev_rec_part1.pptx"
+        },
+        {
+            "order": 8,
+            "name": "Dev Recommendations Part 2",
+            "folder": "08_Dev Recommendations Part 2",
+            "varying": true,
+            "varies_by": [
+                "City",
+                "Asset Type",
+                "Category",
+                "Specifications"
+            ]
+        },
+        {
+            "order": 9,
+            "name": "Dev Recommendations Part 3",
+            "folder": "09_Dev Recommendations Part 3",
+            "varying": false,
+            "filename": "dev_rec_part3.pptx"
+        },
+        {
+            "order": 10,
+            "name": "Financial Analysis",
+            "folder": "10_Financial Analysis",
+            "varying": false,
+            "filename": "financial_analysis.pptx"
+        },
+        {
+            "order": 11,
+            "name": "Disclaimer",
+            "folder": "11_Disclaimer",
+            "varying": false,
+            "filename": "disclaimer.pptx"
+        }
+    ],
+    "criteria": [
+        {
+            "name": "City",
+            "type": "single",
+            "choices": [
+                "Riyadh",
+                "Dubai",
+                "Jeddah",
+                "Abu Dhabi"
+            ]
+        },
+        {
+            "name": "Asset Type",
+            "type": "single",
+            "choices": [
+                "Residential",
+                "Hotel",
+                "Office",
+                "Retail"
+            ]
+        },
+        {
+            "name": "Category",
+            "type": "single",
+            "choices": [
+                "Apartments",
+                "Townhouses",
+                "Villas",
+                "Grade A",
+                "Grade B",
+                "3-star",
+                "4-star",
+                "5-star"
+            ]
+        },
+        {
+            "name": "Specifications",
+            "type": "single",
+            "choices": [
+                "Luxury",
+                "High-end",
+                "Upper-mid end",
+                "Mid-end",
+                "Low-end",
+                "Affordable",
+                "High-Rise",
+                "Business Park",
+                "Mid-Rise",
+                "Regional Mall"
+            ]
+        }
+    ]
+}
