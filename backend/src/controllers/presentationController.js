@@ -15,6 +15,9 @@ import { assemblePresentation } from '../services/presentationServiceNew.js';
  */
 const generate = async (req, res, next) => {
     try {
+        console.log(`\n============== GENERATE REQUEST ==============`);
+        console.log(JSON.stringify(req.body, null, 2));
+
         let { presentationTypeId, typeId, type, formData, plots } = req.body;
         // Alias support
         presentationTypeId = presentationTypeId || typeId || type;
@@ -27,15 +30,39 @@ const generate = async (req, res, next) => {
             });
         }
 
-        // Get presentation type
-        const presentationType = await PresentationType.findById(presentationTypeId);
+        // Get presentation type (Smart Search)
+        let presentationType;
+
+        // 1. Try ID
+        if (presentationTypeId && presentationTypeId.match(/^[0-9a-fA-F]{24}$/)) {
+            try { presentationType = await PresentationType.findById(presentationTypeId); } catch (e) { }
+        }
+
+        // 2. Fallback: Search by Name (Feasibility Study) if missing
+        if (!presentationType) {
+            console.log(`⚠️ Presentation Type ID "${presentationTypeId}" not found. Searching by name...`);
+            // Check form data for clues
+            const formTitle = (formData.subtitle || formData.title || '').toLowerCase();
+
+            if (formTitle.includes('feasibility')) {
+                presentationType = await PresentationType.findOne({ name: 'Feasibility Study' });
+            } else if (formTitle.includes('credential')) {
+                presentationType = await PresentationType.findOne({ name: 'Credential Report' });
+            } else {
+                // Last ditch: Default to Feasibility Study
+                presentationType = await PresentationType.findOne({ name: 'Feasibility Study' });
+            }
+        }
 
         if (!presentationType) {
+            console.log("❌ CRITICAL: No Presentation Type found even after fallback search.");
             return res.status(404).json({
                 success: false,
-                message: 'Presentation type not found'
+                message: 'Presentation type not found (checked ID and Name)'
             });
         }
+
+        console.log(`✅ Using Presentation Type: "${presentationType.name}" (ID: ${presentationType._id})`);
 
         if (!presentationType.isActive) {
             return res.status(400).json({
@@ -410,7 +437,29 @@ const createAndDownload = async (req, res, next) => {
             });
         }
 
-        const presentationType = await PresentationType.findById(presentationTypeId);
+        // Get presentation type (Smart Search)
+        let presentationType;
+
+        // 1. Try ID
+        if (presentationTypeId && presentationTypeId.match(/^[0-9a-fA-F]{24}$/)) {
+            try { presentationType = await PresentationType.findById(presentationTypeId); } catch (e) { }
+        }
+
+        // 2. Fallback: Search by Name (Feasibility Study) if missing
+        if (!presentationType) {
+            console.log(`⚠️ [CreateDownload] Presentation Type ID "${presentationTypeId}" not found. Searching by name...`);
+            // Check form data for clues
+            const formTitle = (formData.subtitle || formData.title || '').toLowerCase();
+
+            if (formTitle.includes('feasibility')) {
+                presentationType = await PresentationType.findOne({ name: 'Feasibility Study' });
+            } else if (formTitle.includes('credential')) {
+                presentationType = await PresentationType.findOne({ name: 'Credential Report' });
+            } else {
+                // Last ditch: Default to Feasibility Study
+                presentationType = await PresentationType.findOne({ name: 'Feasibility Study' });
+            }
+        }
 
         if (!presentationType) {
             return res.status(404).json({
@@ -418,6 +467,7 @@ const createAndDownload = async (req, res, next) => {
                 message: 'Presentation type not found'
             });
         }
+        console.log(`✅ [CreateDownload] Using Presentation Type: "${presentationType.name}" (ID: ${presentationType._id})`);
 
         // For public access, use a dummy Guest ID
         const guestId = '000000000000000000000000';

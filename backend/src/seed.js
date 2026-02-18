@@ -43,25 +43,25 @@ const seedData = async () => {
                 {
                     name: 'City',
                     type: 'single',
-                    options: ['Riyadh', 'Dubai', 'Abu Dhabi', 'Jeddah', 'Doha', 'Mumbai', 'Bangalore', 'Delhi'],
+                    options: ['Dubai', 'Abu Dhabi', 'Riyadh', 'Jeddah'],
                     required: true
                 },
                 {
                     name: 'Asset Type',
                     type: 'single',
-                    options: ['Residential', 'Hotels', 'Office', 'Retail'],
+                    options: ['Residential', 'Office', 'Retail', 'Hotel'],
                     required: true
                 },
                 {
                     name: 'Category',
                     type: 'single',
-                    options: ['Apartments', 'Villas', 'Grade A', 'Grade B', 'High Rise', 'Low Rise'],
+                    options: ['Apartments', 'Villas', 'Townhouses', 'Grade A', 'Grade B', '3 Star', '4 Star', '5 Star', 'Community Mall', 'Regional Mall', 'Neighbourhood Center', 'Convenience Center', 'Small Regional Mall'],
                     required: true
                 },
                 {
                     name: 'Specifications',
                     type: 'single',
-                    options: ['Luxury', 'Mid-Range', 'Budget', 'Premium'],
+                    options: ['Luxury', 'High End', 'Upper Mid End', 'Mid End', 'Affordable', 'Low End', 'Social', 'Business Park', 'High Rise', 'Mid Rise', 'Low Rise', 'Beach Resort', 'Business', 'City', 'Leisure'],
                     required: true
                 }
             ],
@@ -71,77 +71,88 @@ const seedData = async () => {
                     order: 1,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '01_Cover Page'
+                    folderPath: '01_Cover Page',
+                    filename: 'cover.pptx'
                 },
                 {
                     name: 'Table of Contents',
                     order: 2,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '02_Table of Contents'
+                    folderPath: '02_Table of Contents',
+                    filename: 'toc.pptx'
                 },
                 {
                     name: 'Project Background',
                     order: 3,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '03_Project Background'
+                    folderPath: '03_Project Background',
+                    filename: 'project_background.pptx'
                 },
                 {
                     name: 'Executive Summary',
                     order: 4,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '04_Executive Summary'
+                    folderPath: '04_Executive Summary',
+                    filename: 'executive_summary.pptx'
                 },
                 {
                     name: 'Site Assessment',
                     order: 5,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '05_Site Assessment'
+                    folderPath: '05_Site Assessment',
+                    filename: 'site_assessment.pptx'
                 },
                 {
                     name: 'Market Overview',
                     order: 6,
                     isVarying: true,
                     varyingCriteria: ['City', 'Asset Type', 'Category', 'Specifications'],
-                    folderPath: '06_Market Overview'
+                    folderPath: '06_Market Overview',
+                    filename: null
                 },
                 {
                     name: 'Development Recommendations Part 1',
                     order: 7,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '07_Development Recommendations Part 1'
+                    folderPath: '07_Development Recommendations Part 1',
+                    filename: null
                 },
                 {
                     name: 'Development Recommendations Part 2',
                     order: 8,
                     isVarying: true,
                     varyingCriteria: ['City', 'Asset Type', 'Category', 'Specifications'],
-                    folderPath: '08_Development Recommendations Part 2'
+                    folderPath: '08_Development Recommendations Part 2',
+                    filename: null
                 },
                 {
                     name: 'Development Recommendations Part 3',
                     order: 9,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '09_Development Recommendations Part 3'
+                    folderPath: '09_Development Recommendations Part 3',
+                    filename: null
                 },
                 {
                     name: 'Financial & Investment Analysis',
                     order: 10,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '10_Financial & Investment Analysis'
+                    folderPath: '10_Financial & Investment Analysis',
+                    filename: null
                 },
                 {
                     name: 'Disclaimer',
                     order: 11,
                     isVarying: false,
                     varyingCriteria: [],
-                    folderPath: '11_Disclaimer'
+                    folderPath: '11_Disclaimer',
+                    filename: 'disclaimer.pptx'
                 }
             ],
             createdBy: admin._id,

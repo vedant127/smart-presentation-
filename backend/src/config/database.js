@@ -6,12 +6,14 @@ import mongoose from 'mongoose';
  */
 const connectDatabase = async () => {
     try {
-        const conn = await mongoose.connect(process.env.MONGODB_URI, {
+        const mongoURI = 'mongodb://localhost:27017/smart-presentation-machine';
+        const conn = await mongoose.connect(mongoURI, {
             serverSelectionTimeoutMS: 5000,
             socketTimeoutMS: 45000,
         });
 
         console.log(`MongoDB Connected: ${conn.connection.host}`);
+        console.log(`Using Database: ${conn.connection.name}`);
 
         // Handle connection events
         mongoose.connection.on('error', (err) => {

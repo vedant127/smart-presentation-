@@ -1,48 +1,116 @@
 {
     "name": "Feasibility Study",
-    "plots_enabled": true,
+    "description": "Comprehensive feasibility study presentation with market analysis, site assessment, and financial projections",
+    "isActive": true,
+    "enablePlots": true,
+    "criteria": [
+        {
+            "name": "City",
+            "type": "select",
+            "options": [
+                "Dubai",
+                "Abu Dhabi",
+                "Riyadh",
+                "Jeddah"
+            ],
+            "required": true
+        },
+        {
+            "name": "Asset Type",
+            "type": "select",
+            "options": [
+                "Residential",
+                "Office",
+                "Retail",
+                "Hotel"
+            ],
+            "required": true
+        },
+        {
+            "name": "Category",
+            "type": "select",
+            "options": [
+                "Apartments",
+                "Villas",
+                "Townhouses",
+                "Grade A",
+                "Grade B",
+                "3 Star",
+                "4 Star",
+                "5 Star",
+                "Community Mall",
+                "Regional Mall",
+                "Neighbourhood Center",
+                "Convenience Center",
+                "Small Regional Mall"
+            ],
+            "required": true
+        },
+        {
+            "name": "Specifications",
+            "type": "select",
+            "options": [
+                "Luxury",
+                "High End",
+                "Upper Mid End",
+                "Mid End",
+                "Affordable",
+                "Low End",
+                "Social",
+                "Business Park",
+                "High Rise",
+                "Mid Rise",
+                "Low Rise",
+                "Beach Resort",
+                "Business",
+                "City",
+                "Leisure"
+            ],
+            "required": true
+        }
+    ],
     "sections": [
         {
             "order": 1,
             "name": "Cover Page",
-            "folder": "01_Cover Page",
-            "varying": false,
+            "folderPath": "01_Cover Page",
+            "isVarying": false,
             "filename": "cover.pptx"
         },
         {
             "order": 2,
-            "name": "Table of Content",
-            "folder": "02_Table of Content",
-            "varying": false,
+            "name": "Table of Contents",
+            "folderPath": "02_Table of Contents",
+            "isVarying": false,
             "filename": "toc.pptx"
         },
         {
             "order": 3,
             "name": "Project Background",
-            "folder": "03_Project Background",
-            "varying": false,
+            "folderPath": "03_Project Background",
+            "isVarying": false,
             "filename": "project_background.pptx"
         },
         {
             "order": 4,
             "name": "Executive Summary",
-            "folder": "04_Executive Summary",
-            "varying": false,
+            "folderPath": "04_Executive Summary",
+            "isVarying": false,
             "filename": "executive_summary.pptx"
         },
         {
             "order": 5,
             "name": "Site Assessment",
-            "folder": "05_Site Assessment",
-            "varying": false,
+            "folderPath": "05_Site Assessment",
+            "isVarying": false,
             "filename": "site_assessment.pptx"
         },
         {
             "order": 6,
             "name": "Market Overview",
-            "folder": "06_Market Overview",
-            "varying": true,
-            "varies_by": [
+            "folderPath": "06_Market Overview",
+            "isVarying": true,
+            "varyingCriteria": [
                 "City",
                 "Asset Type",
                 "Category",
@@ -51,17 +119,17 @@
         },
         {
             "order": 7,
-            "name": "Dev Recommendations Part 1",
-            "folder": "07_Dev Recommendations Part 1",
-            "varying": false,
-            "filename": "dev_rec_part1.pptx"
+            "name": "Development Recommendations Part 1",
+            "folderPath": "07_Development Recommendations Part 1",
+            "isVarying": false,
+            "filename": null
         },
         {
             "order": 8,
-            "name": "Dev Recommendations Part 2",
-            "folder": "08_Dev Recommendations Part 2",
-            "varying": true,
-            "varies_by": [
+            "name": "Development Recommendations Part 2",
+            "folderPath": "08_Development Recommendations Part 2",
+            "isVarying": true,
+            "varyingCriteria": [
                 "City",
                 "Asset Type",
                 "Category",
@@ -70,76 +138,24 @@
         },
         {
             "order": 9,
-            "name": "Dev Recommendations Part 3",
-            "folder": "09_Dev Recommendations Part 3",
-            "varying": false,
-            "filename": "dev_rec_part3.pptx"
+            "name": "Development Recommendations Part 3",
+            "folderPath": "09_Development Recommendations Part 3",
+            "isVarying": false,
+            "filename": null
         },
         {
             "order": 10,
-            "name": "Financial Analysis",
-            "folder": "10_Financial Analysis",
-            "varying": false,
-            "filename": "financial_analysis.pptx"
+            "name": "Financial & Investment Analysis",
+            "folderPath": "10_Financial & Investment Analysis",
+            "isVarying": false,
+            "filename": null
         },
         {
             "order": 11,
             "name": "Disclaimer",
-            "folder": "11_Disclaimer",
-            "varying": false,
+            "folderPath": "11_Disclaimer",
+            "isVarying": false,
             "filename": "disclaimer.pptx"
-        }
-    ],
-    "criteria": [
-        {
-            "name": "City",
-            "type": "single",
-            "choices": [
-                "Riyadh",
-                "Dubai",
-                "Jeddah",
-                "Abu Dhabi"
-            ]
-        },
-        {
-            "name": "Asset Type",
-            "type": "single",
-            "choices": [
-                "Residential",
-                "Hotel",
-                "Office",
-                "Retail"
-            ]
-        },
-        {
-            "name": "Category",
-            "type": "single",
-            "choices": [
-                "Apartments",
-                "Townhouses",
-                "Villas",
-                "Grade A",
-                "Grade B",
-                "3-star",
-                "4-star",
-                "5-star"
-            ]
-        },
-        {
-            "name": "Specifications",
-            "type": "single",
-            "choices": [
-                "Luxury",
-                "High-end",
-                "Upper-mid end",
-                "Mid-end",
-                "Low-end",
-                "Affordable",
-                "High-Rise",
-                "Business Park",
-                "Mid-Rise",
-                "Regional Mall"
-            ]
         }
     ]
 }

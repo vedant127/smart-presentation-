@@ -56,6 +56,11 @@ const presentationTypeSchema = new mongoose.Schema({
         folderPath: {
             type: String,
             trim: true
+        },
+        filename: {
+            type: String,
+            trim: true,
+            default: null
         }
     }],
     enablePlots: {
