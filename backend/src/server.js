@@ -66,6 +66,10 @@ app.use('/api/files', fileRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/templates', presentationTemplateRoutes);
+// Project Routes
+import projectRoutes from './routes/projectRoutes.js';
+app.use('/api/projects', projectRoutes);
+
 app.use('/api/data', templateDataRoutes);
 
 // 404 handler

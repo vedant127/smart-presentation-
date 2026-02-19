@@ -22,6 +22,14 @@ const generate = async (req, res, next) => {
         // Alias support
         presentationTypeId = presentationTypeId || typeId || type;
 
+        // Ensure formData exists
+        formData = formData || {};
+
+        // Normalize formData keys for consistency (Fix Bug 5)
+        if (req.body.project_name) formData.projectTitle = req.body.project_name;
+        if (req.body.title) formData.projectTitle = req.body.title;
+        if (req.body.client_name) formData.clientName = req.body.client_name;
+
         // Validate required fields
         if (!presentationTypeId || !formData) {
             return res.status(400).json({
