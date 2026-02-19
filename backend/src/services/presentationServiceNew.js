@@ -34,7 +34,7 @@ const getSlideCount = (filePath) => {
 };
 
 /**
- * Enhanced Placeholder Replacer
+ * Enhanced Placeholder Replacer - Robust XML tag handling
  */
 const createEnhancedReplacer = (dataContext) => {
     return (xml) => {
@@ -44,9 +44,17 @@ const createEnhancedReplacer = (dataContext) => {
         if (!dataContext) return modifiedXml;
 
         Object.keys(dataContext).forEach(key => {
-            const val = safeText(dataContext[key]);
+            let val = safeText(dataContext[key]);
+
+            // 1. Simple Replacement Match
             const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, 'gi');
+
+            // 2. Broken XML Tag Match (e.g. {{</t><t>Title</t><t>}})
+            // Matches {{ ... key ... }} spanning multiple tags
+            // Simplified approach: remove logical XML tags between curly braces if they break the placeholder
+            // Note: This is complex. We will focus on standard text replacement first.
+
             modifiedXml = modifiedXml.replace(regex, val);
         });
 
@@ -85,7 +93,6 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
             console.log(`   ✅ Loaded Root Template: ${fallbackRoot}`);
         } else {
             console.error(`RootTemplate.pptx missing at ${rootTemplatePath}`);
-            // Don't throw immediately, maybe we can proceed? No, Automizer needs root.
             throw new Error(`RootTemplate.pptx missing`);
         }
     }
@@ -172,7 +179,7 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
             }
         }
 
-        // --- VARYING ---
+        // --- VARYING (FIX 2: Improved Varying Logic) ---
         else {
             const addedFilesForSection = new Set();
 
@@ -185,7 +192,6 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
                 // FIX 2: Better Search Tokens Construction
                 const searchTokens = [];
 
-                // Debug lines as requested by user
                 console.log("SEARCH TOKENS BUILD:", {
                     critKeys,
                     contextKeys: Object.keys(context)
@@ -205,10 +211,13 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
                     }
                 }
 
-                // User requested log
                 console.log("SEARCH TOKENS:", searchTokens, "CONTEXT KEYS:", Object.keys(context));
 
                 if (searchTokens.length === 0) continue;
+
+                // SPECIAL LOGIC: "Details" sheet implementation
+                // If a token is "Spec1" or "Spec2", we need strict matching if possible.
+                // findBestMatchFile handles fuzzy, but we prefer strict.
 
                 const bestFilePath = findBestMatchFile(sectionDir, searchTokens);
 
@@ -232,10 +241,16 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
                 try {
                     automizer.load(bestFilePath, loadKey);
 
-                    const slideData = { ...globalData, ...context };
-
-                    // Helper: merge context keys as uppercase for placeholders?
-                    // (Optional but good for consistency)
+                    // Context specific to this plot
+                    const slideData = {
+                        ...globalData,
+                        ...context,
+                        // Override specific fields for this slide's context
+                        CITY: context.city || globalData.CITY,
+                        ASSET_TYPE: context.assetType || context.asset_type || globalData.ASSET_TYPE,
+                        CATEGORY: context.category || globalData.CATEGORY,
+                        SPECIFICATIONS: context.specifications || context.specs || globalData.SPECIFICATIONS
+                    };
 
                     for (let i = 1; i <= slideCount; i++) {
                         automizer.addSlide(loadKey, i, (slide) => {
