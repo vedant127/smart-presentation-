@@ -18,20 +18,36 @@ import templateDataRoutes from './routes/templateDataRoutes.js';
 
 import { fileURLToPath } from 'url';
 import path from 'path';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables (force path to backend root)
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Load environment variables from the project root
+const envPath = path.resolve(process.cwd(), '.env');
+const envPathAlt = path.resolve(__dirname, '../.env');
+if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+} else {
+    dotenv.config({ path: envPathAlt });
+}
+const config = {
+    port: process.env.PORT || 5000,
+    corsOrigin: process.env.CORS_ORIGIN || '*'
+};
 
 // Initialize Express app
 const app = express();
 
 // Middleware
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || '*',
-    credentials: true
+    origin: (origin, callback) => {
+        // Allow all origins in development
+        callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Request logging (only in development)
@@ -79,7 +95,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Start server
-const PORT = process.env.PORT || 5000;
+const PORT = config.port;
 
 const startServer = async () => {
     try {
@@ -94,9 +110,10 @@ const startServer = async () => {
         await connectDatabase();
 
         // Start listening
-        app.listen(PORT, () => {
-            console.log(`\nServer started on port ${PORT}`);
-            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        // Start listening (0.0.0.0 avoids IPv6 address in use / refused issues)
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`\n🚀 SERVER RUNNING ON PORT ${PORT}`);
+            console.log(`📡 CORS ALLOWED FROM: ${config.corsOrigin}`);
             console.log(`Health check: http://localhost:${PORT}/health\n`);
         });
 

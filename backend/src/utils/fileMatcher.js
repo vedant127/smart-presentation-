@@ -1,99 +1,116 @@
-
 import fs from 'fs';
 import path from 'path';
 
-const log = console.log;
+/**
+ * findBestMatchFile
+ *
+ * Given a folder and an array of criteria values, find the PPTX file
+ * whose name best matches the criteria.
+ *
+ * FILENAME FORMAT IN LIBRARY:
+ *   "dubai + residential + apartments + luxury.pptx"
+ *   (all lowercase, separated by " + ")
+ *
+ * CRITERIA COMING IN (from user form — may have any casing):
+ *   ["Dubai", "Residential", "Apartments", "Luxury"]
+ *
+ * STRATEGY:
+ *   1. Normalise both the criteria and every filename to lowercase
+ *   2. Build the expected key: "dubai + residential + apartments + luxury"
+ *   3. Try exact match first
+ *   4. If no exact match, try partial / fuzzy match (most tokens matched)
+ *   5. Return the full path of the best match, or null if nothing found
+ */
+export const findBestMatchFile = (folderPath, criteria = []) => {
 
-// Helper: Normalize query string (e.g. "Spec 1" -> "spec1")
-const normalize = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // ── Guard ────────────────────────────────────────────────────
+    if (!fs.existsSync(folderPath)) {
+        console.warn(`[FileMatcher] Folder does not exist: ${folderPath}`);
+        return null;
+    }
 
-// Helper: Find Best Matching File in Directory (STRICT)
-// Returns absolute path to file or null
-export const findBestMatchFile = (dir, criteriaValues) => {
-    if (!fs.existsSync(dir)) return null;
+    if (!criteria || criteria.length === 0) {
+        console.warn(`[FileMatcher] No criteria provided`);
+        return null;
+    }
 
-    // Tokens: [ 'dubai', 'residential', 'apartments', 'luxury' ]
-    const tokens = criteriaValues.map(c => String(c).trim()).filter(c => c);
-    if (tokens.length === 0) return null;
+    // ── Normalise helper ─────────────────────────────────────────
+    const normalise = (str) =>
+        String(str)
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, ' ');          // collapse multiple spaces
 
-    // 1. Exact Name Match (The Gold Standard)
-    // "Dubai + Residential + Apartments + Luxury.pptx"
-    // Try case-insensitive matching for the exact constructed filename
-    const exactName = tokens.join(' + ') + '.pptx';
-    const files = fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith('.pptx') && !f.startsWith('~$'));
+    // ── Build the expected key ───────────────────────────────────
+    // e.g. ["Dubai","Residential","Apartments","Luxury"]
+    //   → "dubai + residential + apartments + luxury"
+    const normalisedCriteria = criteria.map(normalise);
+    const expectedKey = normalisedCriteria.join(' + ');
 
-    // Check for exact match (normalized)
-    const exactMatch = files.find(f => normalize(f) === normalize(exactName));
-    if (exactMatch) return path.join(dir, exactMatch);
+    console.log(`[FileMatcher] Looking in : ${folderPath}`);
+    console.log(`[FileMatcher] Expected key: "${expectedKey}"`);
 
-    // 2. Strict Subset Match
-    // We want a file that contains ALL of our requested tokens if possible.
-    // If we asked for "Dubai + Residential", we prefer "Dubai + Residential.pptx" over "Dubai + Residential + Luxury.pptx" if it exists.
-    // BUT we also accept "Dubai + Residential + Luxury" if "Dubai + Residential" doesn't exist? 
-    // Wait, the user said: "Dubai + Residential + Mixed-use" -> Select matching file.
+    // ── Read all PPTX files in the folder ────────────────────────
+    const files = fs.readdirSync(folderPath).filter(f =>
+        f.toLowerCase().endsWith('.pptx') && !f.startsWith('~$')
+    );
 
-    // Let's Score:
-    // +1 for every token matched
-    // -0.5 for every extra token in filename that wasn't asked for (penalty for being too specific?)
-    // Actually, usually Library files are SPECIFIC logic.
-    // If Library has "Dubai + Residential.pptx" and we ask for "Dubai + Residential + Luxury", we want the most specific one that matches strictly?
-    // It's safer to rely on "Most Matched Tokens".
+    if (files.length === 0) {
+        console.warn(`[FileMatcher] No PPTX files found in: ${folderPath}`);
+        return null;
+    }
 
-    let bestFile = null;
-    let maxScore = -1;
-
+    // ── Step 1: Exact match (after normalising filename) ─────────
     for (const file of files) {
-        const fileNorm = normalize(file.replace('.pptx', ''));
-        // "dubairesidentialapartmentsluxury"
-
-        // Count matches
-        let matchCount = 0;
-        let allTokensFound = true;
-
-        for (const token of tokens) {
-            const tokenNorm = normalize(token);
-            if (fileNorm.includes(tokenNorm)) {
-                matchCount++;
-            } else {
-                // If a requested token is missing (e.g. asked for "Apartments" but file is "Villas"), this file is WRONG.
-                // UNLESS the file is generic (e.g. just "Dubai + Residential").
-                // So failure to match a token is not fatal, but lowers score?
-                // Actually, if I ask for "Dubai", I shouldn't get "Riyadh".
-                // So unmatched tokens in the QUERY are NOT fatal if the file is generic?
-                // No, if I ask for "Dubai", "Riyadh" file has 0 matches.
-
-                // What if I ask for "Dubai + Apartments" and file is "Dubai + Villas"?
-                // "Dubai" matches. "Villas" doesn't match "Apartments".
-                // Score = 1.
-                // File "Dubai + Apartments" -> Score = 2.
-                // So Score Logic works.
-            }
-        }
-
-        // Critical Rule: First Token (City) must match?
-        // Usually token[0] is City.
-        const firstTokenNorm = normalize(tokens[0]);
-        if (!fileNorm.includes(firstTokenNorm)) {
-            continue; // Mismatch on primary key (City) -> Skip
-        }
-
-        // Penalty for extra length? (Prefer exact matches)
-        // If query = "Dubai", file1="Dubai", file2="DubaiResidential"
-        // file1 score=1, file2 score=1.
-        // We prefer file1.
-        // So tie-breaker = shortest length.
-
-        if (matchCount > maxScore) {
-            maxScore = matchCount;
-            bestFile = file;
-        } else if (matchCount === maxScore) {
-            // Tie-breaker: Shortest filename (closest to exact generic match)
-            if (file.length < bestFile.length) {
-                bestFile = file;
-            }
+        // Strip .pptx extension and normalise
+        const fileKey = normalise(file.replace(/\.pptx$/i, ''));
+        if (fileKey === expectedKey) {
+            console.log(`[FileMatcher] ✅ Exact match: "${file}"`);
+            return path.join(folderPath, file);
         }
     }
 
-    if (bestFile && maxScore > 0) return path.join(dir, bestFile);
+    // ── Step 2: Fuzzy match — score each file by how many
+    //           criteria tokens appear in the filename ────────────
+    let bestFile = null;
+    let bestScore = 0;
+
+    for (const file of files) {
+        const fileKey = normalise(file.replace(/\.pptx$/i, ''));
+
+        // Split file key into tokens (split on " + " or spaces or underscores)
+        const fileTokens = fileKey.split(/\s*\+\s*|\s+|_/).map(t => t.trim()).filter(Boolean);
+
+        let score = 0;
+        for (const criterion of normalisedCriteria) {
+            // Check if this criterion appears anywhere in the file key
+            if (fileKey.includes(criterion)) {
+                score++;
+            } else {
+                // Try partial: each word of the criterion appears
+                const words = criterion.split(/\s+/);
+                const allWordsFound = words.every(w => fileTokens.some(t => t.includes(w)));
+                if (allWordsFound) score += 0.5;
+            }
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestFile = file;
+        }
+    }
+
+    // Only accept fuzzy match if at least half the criteria matched
+    const threshold = normalisedCriteria.length / 2;
+    if (bestFile && bestScore >= threshold) {
+        console.log(`[FileMatcher] Fuzzy match (score ${bestScore}/${normalisedCriteria.length}): "${bestFile}"`);
+        return path.join(folderPath, bestFile);
+    }
+
+    // ── No match ─────────────────────────────────────────────────
+    console.warn(`[FileMatcher] No match found for key: "${expectedKey}"`);
+    console.warn(`[FileMatcher]    Available files: ${files.join(', ')}`);
     return null;
 };
+
+export default { findBestMatchFile };
