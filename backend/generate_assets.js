@@ -28,6 +28,7 @@ const addFooter = (slide) => {
 };
 
 // --- FILE GENERATORS ---
+const TEMPLATE_IMG = path.resolve(process.cwd(), "templates", "feasibility-study", "cover-images", "default.jpg");
 
 /**
  * 01_Cover Page/cover.pptx
@@ -37,22 +38,41 @@ const createCover = async () => {
     pptx.layout = "LAYOUT_WIDE";
 
     const slide = pptx.addSlide();
-    slide.background = { color: THEME.navy };
+
+    // Add Background Image if exists, else fallback to Navy
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        slide.background = { path: TEMPLATE_IMG };
+        // Overlay a semi-transparent navy rectangle for better text readability
+        slide.addShape(pptx.ShapeType.rect, {
+            x: 0, y: 0, w: "100%", h: "100%",
+            fill: { color: THEME.navy, transparency: 40 }
+        });
+    } else {
+        slide.background = { color: THEME.navy };
+    }
+
+    // Add Cover Image Placeholder (to be replaced by engine)
+    slide.addText("[Cover Image Placement]", {
+        x: 6.5, y: 1.5, w: 5.5, h: 5.5,
+        align: "center", valign: "middle",
+        fill: { color: "FFFFFF", transparency: 80 },
+        color: "888888", fontSize: 20
+    });
 
     slide.addText("FEASIBILITY STUDY", {
-        x: 1, y: 2, w: "80%", align: "left",
+        x: 1, y: 2, w: "60%", align: "left",
         fontSize: 44, color: THEME.white, bold: true, fontFace: THEME.font
     });
     slide.addText("{{PROJECT_NAME}}", {
-        x: 1, y: 3, w: "80%", align: "left",
+        x: 1, y: 3, w: "60%", align: "left",
         fontSize: 32, color: THEME.gold, fontFace: THEME.font
     });
     slide.addText("Prepared for: {{CLIENT_NAME}}", {
-        x: 1, y: 5, w: "80%", align: "left",
+        x: 1, y: 5, w: "60%", align: "left",
         fontSize: 18, color: THEME.white, fontFace: THEME.font
     });
     slide.addText("Date: {{DATE}}", {
-        x: 1, y: 5.5, w: "80%", align: "left",
+        x: 1, y: 5.5, w: "60%", align: "left",
         fontSize: 14, color: "CCCCCC", fontFace: THEME.font
     });
 
@@ -113,7 +133,12 @@ const createBackground = async () => {
 
     // Slide 1: Header
     const s1 = pptx.addSlide();
-    s1.background = { color: THEME.navy };
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        s1.background = { path: TEMPLATE_IMG };
+        s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: "100%", fill: { color: THEME.navy, transparency: 40 } });
+    } else {
+        s1.background = { color: THEME.navy };
+    }
     s1.addText("PROJECT BACKGROUND", {
         x: 0, y: "40%", w: "100%", align: "center",
         fontSize: 48, color: THEME.white, bold: true, fontFace: THEME.font
@@ -152,7 +177,12 @@ const createExecSummary = async () => {
 
     // Slide 1: Header
     const s1 = pptx.addSlide();
-    s1.background = { color: THEME.navy };
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        s1.background = { path: TEMPLATE_IMG };
+        s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: "100%", fill: { color: THEME.navy, transparency: 40 } });
+    } else {
+        s1.background = { color: THEME.navy };
+    }
     s1.addText("EXECUTIVE SUMMARY", { x: 0, y: "40%", w: "100%", align: "center", fontSize: 48, color: THEME.white, bold: true });
     addFooter(s1);
 
@@ -202,7 +232,12 @@ const createSiteAssessment = async () => {
     pptx.layout = "LAYOUT_WIDE";
 
     const s1 = pptx.addSlide();
-    s1.background = { color: THEME.navy };
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        s1.background = { path: TEMPLATE_IMG };
+        s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: "100%", fill: { color: THEME.navy, transparency: 40 } });
+    } else {
+        s1.background = { color: THEME.navy };
+    }
     s1.addText("SITE ASSESSMENT", { x: 0, y: "40%", w: "100%", align: "center", fontSize: 48, color: THEME.white, bold: true });
     addFooter(s1);
 
@@ -234,8 +269,13 @@ const createFinancials = async () => {
 
     // Slide 1: Header
     const s1 = pptx.addSlide();
-    s1.background = { color: THEME.navy };
-    s1.addText("4. FINANCIAL & INVESTMENT ANALYSIS", { x: 1, y: "40%", w: "80%", fontSize: 48, color: THEME.white, bold: true });
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        s1.background = { path: TEMPLATE_IMG };
+        s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: "100%", fill: { color: THEME.navy, transparency: 30 } });
+    } else {
+        s1.background = { color: THEME.navy };
+    }
+    s1.addText("FINANCIAL & INVESTMENT ANALYSIS", { x: 1, y: "40%", w: "80%", fontSize: 48, color: THEME.white, bold: true });
     addFooter(s1);
 
     // Slide 2-6: Assumptions
