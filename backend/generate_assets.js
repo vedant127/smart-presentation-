@@ -52,12 +52,21 @@ const createCover = async () => {
     }
 
     // Add Cover Image Placeholder (to be replaced by engine)
-    slide.addText("[Cover Image Placement]", {
-        x: 6.5, y: 1.5, w: 5.5, h: 5.5,
-        align: "center", valign: "middle",
-        fill: { color: "FFFFFF", transparency: 80 },
-        color: "888888", fontSize: 20
-    });
+    // Using a real image object (even if it's the same as background for now) ensures we have an image node to replace
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        slide.addImage({
+            path: TEMPLATE_IMG,
+            x: 6.5, y: 1.5, w: 5.5, h: 5.5,
+            altText: "REPLACE_ME_COVER_IMAGE"
+        });
+    } else {
+        slide.addText("[Cover Image Placeholder]", {
+            x: 6.5, y: 1.5, w: 5.5, h: 5.5,
+            align: "center", valign: "middle",
+            fill: { color: "FFFFFF", transparency: 80 },
+            color: "888888", fontSize: 20
+        });
+    }
 
     slide.addText("FEASIBILITY STUDY", {
         x: 1, y: 2, w: "60%", align: "left",
@@ -354,27 +363,26 @@ const createVarying = async () => {
     pptx6.layout = "LAYOUT_WIDE";
 
     const s61 = pptx6.addSlide();
-    s61.background = { color: THEME.navy };
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        s61.background = { path: TEMPLATE_IMG };
+        s61.addShape(pptx6.ShapeType.rect, { x: 0, y: 0, w: "100%", h: "100%", fill: { color: THEME.navy, transparency: 40 } });
+    } else {
+        s61.background = { color: THEME.navy };
+    }
     s61.addText("MARKET OVERVIEW", { x: 0, y: "40%", w: "100%", align: "center", fontSize: 48, color: "FFFFFF", bold: true });
     addFooter(s61);
 
     const s62 = pptx6.addSlide();
-    s62.addText("RESIDENTIAL SUPPLY", { x: 0.5, y: 0.3, fontSize: 24, color: THEME.navy, bold: true });
-    s62.addText("[Supply Chart Placeholder]", { x: 0.5, y: 1, w: 9, h: 4, fill: { color: "F9F9F9" } });
+    s62.addText("RESIDENTIAL MARKET DYNAMICS", { x: 0.5, y: 0.3, fontSize: 24, color: THEME.navy, bold: true });
+    s62.addText("The market is characterized by robust capital appreciation and high rental yields, driven by significant infrastructure investment and favorable demographic shifts.", { x: 0.5, y: 1, w: "90%", fontSize: 14 });
+    const marketTable = [
+        [{ text: "Metric", options: { fill: THEME.navy, color: "FFFFFF" } }, { text: "Current Value", options: { fill: THEME.navy, color: "FFFFFF" } }, { text: "YoY Growth", options: { fill: THEME.navy, color: "FFFFFF" } }],
+        ["Average Sales Price", "$1,450/sqft", "+12.4%"],
+        ["Average Rental Yield", "6.8%", "+0.5%"],
+        ["Occupancy Rate", "94.2%", "+2.1%"]
+    ];
+    s62.addTable(marketTable, { x: 0.5, y: 2, w: 9, rowH: 0.5, border: { color: "CCCCCC" } });
     addFooter(s62);
-
-    const s63 = pptx6.addSlide();
-    s63.addText("RESIDENTIAL DEMAND DRIVERS", { x: 0.5, y: 0.3, fontSize: 24, color: THEME.navy, bold: true });
-    s63.addText("[Demand Drivers Analysis]", { x: 0.5, y: 1, w: 9, h: 4, fill: { color: "F9F9F9" } });
-    addFooter(s63);
-
-    const s64 = pptx6.addSlide();
-    s64.addText("KEY MARKET INDICATORS", { x: 0.5, y: 0.3, fontSize: 24, color: THEME.navy, bold: true });
-    const indicators = ["Avg. Yield: 6.5%", "Vacancy: 8%", "Absorption: High"];
-    indicators.forEach((text, i) => {
-        s64.addText(text, { x: 0.5 + (i * 3), y: 2, w: 2.8, h: 1.5, align: "center", fontSize: 18, fill: { color: THEME.navy }, color: THEME.white });
-    });
-    addFooter(s64);
 
     const dir6 = path.join(baseLibrary, "06_Market Overview");
     ensureDir(dir6);
@@ -386,14 +394,25 @@ const createVarying = async () => {
     pptx8.layout = "LAYOUT_WIDE";
 
     const s81 = pptx8.addSlide();
-    s81.background = { color: THEME.gold };
+    if (fs.existsSync(TEMPLATE_IMG)) {
+        s81.background = { path: TEMPLATE_IMG };
+        s81.addShape(pptx8.ShapeType.rect, { x: 0, y: 0, w: "100%", h: "100%", fill: { color: THEME.gold, transparency: 40 } });
+    } else {
+        s81.background = { color: THEME.gold };
+    }
     s81.addText("DEVELOPMENT RECOMMENDATIONS", { x: 0, y: "40%", w: "100%", align: "center", fontSize: 48, color: THEME.navy, bold: true });
     addFooter(s81);
 
     const s82 = pptx8.addSlide();
-    s82.addText("CONCEPT AND DEVELOPMENT VISION", { x: 0.5, y: 0.3, fontSize: 24, color: THEME.navy, bold: true });
-    s82.addText("[Vision Image 1]", { x: 0.5, y: 1, w: 4.5, h: 3, fill: { color: "EEEEEE" } });
-    s82.addText("[Vision Image 2]", { x: 5.2, y: 1, w: 4.5, h: 3, fill: { color: "EEEEEE" } });
+    s82.addText("CONCEPT DESIGN & PROGRAMMING", { x: 0.5, y: 0.3, fontSize: 24, color: THEME.navy, bold: true });
+    s82.addText("The development vision integrates smart-living technologies with biophilic design to create a sanctuary of luxury in the heart of the city.", { x: 0.5, y: 1, w: "90%", fontSize: 14 });
+    const designTable = [
+        [{ text: "Component", options: { fill: THEME.gold, color: "FFFFFF" } }, { text: "Strategic Justification", options: { fill: THEME.gold, color: "FFFFFF" } }],
+        ["Infinity Sky Pool", "Enhances premium positioning and capital appreciation"],
+        ["Smart Hub Integration", "Targets tech-savvy mid-high income demographics"],
+        ["Wellness Center", "Addresses post-pandemic health & lifestyle trends"]
+    ];
+    s82.addTable(designTable, { x: 0.5, y: 2, w: 9, rowH: 0.6, border: { color: "CCCCCC" } });
     addFooter(s82);
 
     const s83 = pptx8.addSlide();

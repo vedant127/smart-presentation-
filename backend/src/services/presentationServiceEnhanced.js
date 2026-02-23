@@ -2,8 +2,18 @@ import path from 'path';
 import fs from 'fs';
 import { Automizer } from 'pptx-automizer';
 import { v4 as uuidv4 } from 'uuid';
-import { findBestMatchFile } from '../utils/fileMatcher.js';
+import PizZip from 'pizzip';
+import { findBestMatchFile, normalisePlotContext, buildSearchTokens } from '../utils/fileMatcher.js';
 import * as aiContentGenerator from './aiContentGenerator.js';
+
+
+// Count how many slides are inside a PPTX file (it's a ZIP)
+const countSlidesInFile = (filePath) => {
+    try {
+        const zip = new PizZip(fs.readFileSync(filePath));
+        return Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
+    } catch { return 1; } // Default to 1 if unreadable
+};
 
 const log = console.log;
 
@@ -45,39 +55,73 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
     });
 
     // 1.1 Load Root Template (MUST have correct dimensions: 20" × 11.2")
-    let libraryRoot = path.join(process.cwd(), 'Library');
-    if (!fs.existsSync(libraryRoot)) {
-        libraryRoot = path.join(process.cwd(), '..', 'Library');
+    const baseDir = process.cwd();
+    let templatesDir = path.resolve(baseDir, 'templates');
+    if (!fs.existsSync(templatesDir)) {
+        templatesDir = path.resolve(baseDir, '..', 'templates');
     }
 
-    const rootTemplatePath = path.join(libraryRoot, 'RootTemplate.pptx');
-    if (fs.existsSync(rootTemplatePath)) {
+    // Check multiple possible locations for RootTemplate.pptx
+    const possiblePaths = [
+        path.join(templatesDir, 'RootTemplate.pptx'),
+        path.join(baseDir, 'Library', 'RootTemplate.pptx'),
+        path.join(baseDir, '..', 'Library', 'RootTemplate.pptx')
+    ];
+
+    let rootTemplatePath = null;
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            rootTemplatePath = p;
+            break;
+        }
+    }
+
+    if (rootTemplatePath) {
         automizer.loadRoot(rootTemplatePath);
         console.log(`   ✅ Loaded Root Template: ${rootTemplatePath}`);
     } else {
-        console.error(`CRITICAL: RootTemplate.pptx missing at ${rootTemplatePath}`);
-        throw new Error(`SYSTEM ERROR: RootTemplate.pptx missing. Please create it with dimensions 20" × 11.2"`);
+        console.error(`CRITICAL: RootTemplate.pptx missing. Checked: [${possiblePaths.join(', ')}]`);
+        throw new Error(`SYSTEM ERROR: RootTemplate.pptx missing. Please ensure it exists in the 'templates' folder with dimensions 20" × 11.2"`);
     }
 
-    // 2. Normalize Plots Data
-    let plotContexts = (plots && plots.length > 0)
+    // Restore libraryRoot for finding sections
+    let libraryRoot = path.join(baseDir, 'Library');
+    if (!fs.existsSync(libraryRoot)) {
+        libraryRoot = path.join(baseDir, '..', 'Library');
+    }
+
+    // 2. Normalize Plots Data — accept ANY key casing from the frontend
+    const rawContexts = (plots && plots.length > 0)
         ? plots.map(p => p.criteria || p.data || p)
         : [formData];
 
-    // Validate contexts
-    plotContexts = plotContexts.filter(ctx => ctx && Object.keys(ctx).length > 0);
+    // ✅ KEY: Normalise every plot context so 'City', 'city', 'CITY' all work
+    let plotContexts = rawContexts
+        .map(normalisePlotContext)
+        .filter(ctx => ctx.city || ctx.assetType || ctx.category || ctx.specifications);
+
+    // Fallback: if no plots had valid criteria, treat formData itself as the single context
+    if (plotContexts.length === 0) {
+        const fd = normalisePlotContext(formData);
+        plotContexts = fd.city || fd.assetType ? [fd] : [];
+    }
+
+    console.log(`   📊 Plot contexts (normalised):`, plotContexts);
 
     // 3. Prepare Global Data for Placeholder Replacement
+    // Pull the first plot's normalised context as the primary reference for globals
+    const firstCtx = plotContexts[0] || {};
     const globalData = {
         PROJECT_NAME: formData.projectName || formData.title || 'Real Estate Development Project',
         CLIENT_NAME: formData.clientName || 'Confidential Client',
         DATE: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
         YEAR: new Date().getFullYear().toString(),
-        CITY: formData.city || (plotContexts[0] && plotContexts[0].city) || 'City',
-        ASSET_TYPE: formData.assetType || (plotContexts[0] && plotContexts[0].assetType) || 'Asset Type',
-        CATEGORY: formData.category || (plotContexts[0] && plotContexts[0].category) || '',
-        SPECIFICATIONS: formData.specifications || (plotContexts[0] && plotContexts[0].specifications) || '',
-        ...formData // Include all form data for flexibility
+        CITY: firstCtx.city || 'City',
+        ASSET_TYPE: firstCtx.assetType || 'Asset Type',
+        CATEGORY: firstCtx.category || '',
+        SPECIFICATIONS: firstCtx.specifications || '',
+        // Raw form fields keep their original keys so any {{fieldName}} tag also resolves
+        ...formData,
     };
 
     console.log(`   📋 Global Data:`, globalData);
@@ -128,29 +172,27 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
             const files = fs.readdirSync(sectionDir).filter(f => f.endsWith('.pptx') && !f.startsWith('~$'));
 
             if (files.length > 0) {
-                // Find best file (heuristic: specific names or first available)
-                let targetFile = files.find(f => f.toLowerCase().includes('cover')) ||
-                    files.find(f => f.toLowerCase().includes('toc')) ||
-                    files.find(f => f.toLowerCase().includes(section.name.toLowerCase().replace(/[^a-z]/g, ''))) ||
-                    files[0];
-
+                // Use the first (and usually only) PPTX in the section folder
+                const targetFile = files[0];
                 const filePath = path.join(sectionDir, targetFile);
 
                 if (fs.statSync(filePath).size > 0) {
-                    console.log(`   ▶️ Adding Static Slide: "${targetFile}"`);
+                    const totalSlides = countSlidesInFile(filePath);
+                    console.log(`   ▶️ Adding ALL ${totalSlides} slide(s) from "${targetFile}"`);
 
                     try {
-                        const loadKey = `static_${section.order}_${uuidv4()}`;
+                        const loadKey = `static_${section.order}_${uuidv4().substring(0, 6)}`;
                         automizer.load(filePath, loadKey);
 
-                        // Add slide with dynamic placeholder replacement
-                        automizer.addSlide(loadKey, 1, (slide) => {
-                            slide.modify(createEnhancedReplacer(globalData));
-                        });
-
-                        slideCount++;
+                        // ✅ KEY FIX: Loop through ALL slides, not just slide 1
+                        for (let slideIdx = 1; slideIdx <= totalSlides; slideIdx++) {
+                            automizer.addSlide(loadKey, slideIdx, (slide) => {
+                                slide.modify(createEnhancedReplacer(globalData));
+                            });
+                            slideCount++;
+                        }
                     } catch (err) {
-                        console.error(`   ❌ ERROR Adding Static Slide:`, err.message);
+                        console.error(`   ❌ ERROR Adding Static Slides:`, err.message);
                     }
                 }
             } else {
@@ -162,109 +204,95 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
         else {
             const addedFilesForSection = new Set(); // Deduplication
 
-            // Determine relevant criteria for this section
-            const relevantCriteriaNames = (section.varyingCriteria && section.varyingCriteria.length > 0)
-                ? section.varyingCriteria
-                : presentationType.criteria.map(c => c.name);
-
-            for (const context of plotContexts) {
-                // 1. Build Search Tokens
-                const searchTokens = [];
-                for (const critName of relevantCriteriaNames) {
-                    const key = Object.keys(context).find(k => k.toLowerCase() === critName.toLowerCase());
-                    if (key && context[key]) {
-                        searchTokens.push(context[key]);
-                    }
-                }
+            for (const ctx of plotContexts) {
+                // ✅ NEW: use buildSearchTokens — handles ANY key casing
+                const searchTokens = buildSearchTokens(ctx);
 
                 if (searchTokens.length === 0) {
+                    console.warn(`   ⚠️ Plot has no usable criteria, skipping.`, ctx);
                     continue;
                 }
 
-                // 2. Find Best Matching File
+                console.log(`   🔍 Searching with tokens: [${searchTokens.join(', ')}]`);
+
+                // Find Best Matching File
                 const bestFilePath = findBestMatchFile(sectionDir, searchTokens);
 
                 if (!bestFilePath) {
-                    console.log(`   (No match for [${searchTokens.join(', ')}])`);
-
-                    // Try AI content generation as fallback
-                    console.log(`   🤖 Attempting AI content generation...`);
-                    try {
-                        const aiContent = await aiContentGenerator.generateSlideContent(
-                            section.name,
-                            formData,
-                            context
-                        );
-                        console.log(`   ✅ AI Content Generated (${aiContent.length} chars)`);
-                        // Note: Can't add without template - would need pptxgenjs integration
-                    } catch (aiError) {
-                        console.error(`   ❌ AI generation failed:`, aiError.message);
-                    }
-
+                    console.log(`   ⚠️ No file match for [${searchTokens.join(', ')}] — skipping section for this plot.`);
                     continue;
                 }
 
                 const filename = path.basename(bestFilePath);
 
-                // 3. Deduplication
+                // Deduplication
                 if (addedFilesForSection.has(filename)) {
                     console.log(`   ⏭️ Skipping duplicate: "${filename}"`);
                     continue;
                 }
 
-                // 4. Add the Slide
-                if (fs.existsSync(bestFilePath)) {
-                    console.log(`   ▶️ Adding Varying Slide: "${filename}" (matched: ${searchTokens.join('+')})`);
-                    addedFilesForSection.add(filename);
+                // Add ALL Slides from the matched file
+                addedFilesForSection.add(filename);
+                const totalSlides = countSlidesInFile(bestFilePath);
+                console.log(`   ▶️ Adding ALL ${totalSlides} slide(s) from "${filename}" (tokens: ${searchTokens.join('+')})`);
 
-                    try {
-                        const loadKey = `vary_${section.order}_${filename.replace(/[^a-z0-9]/gi, '_')}_${uuidv4()}`;
-                        automizer.load(bestFilePath, loadKey);
+                try {
+                    const loadKey = `vary_${section.order}_${filename.replace(/[^a-z0-9]/gi, '_').substring(0, 28)}_${uuidv4().substring(0, 6)}`;
+                    automizer.load(bestFilePath, loadKey);
 
-                        // Merge global data with plot-specific context
-                        const slideData = {
-                            ...globalData,
-                            ...context,
-                            CITY: context.city || globalData.CITY,
-                            ASSET_TYPE: context.assetType || context.asset_type || globalData.ASSET_TYPE,
-                            CATEGORY: context.category || globalData.CATEGORY,
-                            SPECIFICATIONS: context.specifications || context.specs || globalData.SPECIFICATIONS
-                        };
+                    // Build slide-level data: merge global + normalised ctx values
+                    const slideData = {
+                        ...globalData,
+                        CITY: ctx.city || globalData.CITY,
+                        ASSET_TYPE: ctx.assetType || globalData.ASSET_TYPE,
+                        CATEGORY: ctx.category || globalData.CATEGORY,
+                        SPECIFICATIONS: ctx.specifications || globalData.SPECIFICATIONS,
+                    };
 
-                        automizer.addSlide(loadKey, 1, (slide) => {
+                    for (let slideIdx = 1; slideIdx <= totalSlides; slideIdx++) {
+                        automizer.addSlide(loadKey, slideIdx, (slide) => {
                             slide.modify(createEnhancedReplacer(slideData));
                         });
-
                         slideCount++;
-                    } catch (err) {
-                        console.error(`   ❌ ERROR Adding Varying Slide:`, err.message);
                     }
+                } catch (err) {
+                    console.error(`   ❌ ERROR Adding Varying Slides:`, err.message);
                 }
             }
         }
     }
 
     // 5. Write Output
-    const runId = uuidv4();
-    const finalFileName = `${(formData.title || formData.projectName || 'Presentation').replace(/[^a-zA-Z0-9]/g, '_')}_${runId}.pptx`;
+    const shortId = uuidv4().substring(0, 8);
+    const safeTitle = (formData.title || formData.projectName || 'Presentation')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .substring(0, 40);
+    const finalFileName = `${safeTitle}_${shortId}.pptx`;
 
     let outputDir = path.join(process.cwd(), 'generated');
-    if (!fs.existsSync(path.join(process.cwd(), 'Library'))) {
-        outputDir = path.join(process.cwd(), '..', 'generated');
-    }
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     await automizer.write(finalFileName);
+    const finalPath = path.join(outputDir, finalFileName);
+
+    // 6. Run Nuclear Post-Processor for reliable placeholder replacement + image injection
+    const { nuclearCleanup } = await import('./presentationServiceNew.js');
+    if (typeof nuclearCleanup === 'function') {
+        const baseDir = process.cwd();
+        let tplDir = path.resolve(baseDir, 'templates');
+        if (!fs.existsSync(tplDir)) tplDir = path.resolve(baseDir, '..', 'templates');
+        nuclearCleanup(finalPath, globalData, tplDir);
+    }
 
     console.log(`\n✅ ENHANCED SYSTEM: Assembly Complete!`);
     console.log(`   Output: ${finalFileName}`);
     console.log(`   Total Slides: ${slideCount}`);
-    console.log(`   Location: ${path.join(outputDir, finalFileName)}`);
+    console.log(`   Location: ${finalPath}`);
 
     return {
         fileName: finalFileName,
-        filePath: path.join(outputDir, finalFileName),
-        fileSize: fs.statSync(path.join(outputDir, finalFileName)).size,
+        filePath: finalPath,
+        fileSize: fs.statSync(finalPath).size,
         slideCount: slideCount
     };
 };

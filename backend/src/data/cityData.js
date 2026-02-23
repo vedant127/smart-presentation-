@@ -155,7 +155,7 @@ export const getCityData = (city, projectType) => {
     }
 
     return {
-        city: correctedCity,  // ✅ Return corrected city name
+        city: correctedCity,  
         projectType,
         ...typeInfo
     };

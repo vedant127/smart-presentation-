@@ -2,95 +2,144 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * findBestMatchFile
+ * ─────────────────────────────────────────────────────────────
+ *  NORMALISE HELPER
+ *  Convert any string to plain lowercase, collapse whitespace
+ * ─────────────────────────────────────────────────────────────
+ */
+const norm = (str) =>
+    String(str || '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, ' ');
+
+
+/**
+ * ─────────────────────────────────────────────────────────────
+ *  normalisePlotContext
  *
- * Given a folder and an array of criteria values, find the PPTX file
- * whose name best matches the criteria.
+ *  Accepts a raw "plot.data" / "plot.criteria" object that may
+ *  have any key casing:
+ *    { City: 'Dubai', 'Asset Type': 'Residential', … }
+ *    { city: 'dubai', assetType: 'Residential', … }
+ *    { CITY: 'DUBAI', ASSET_TYPE: 'residential', … }
  *
- * FILENAME FORMAT IN LIBRARY:
- *   "dubai + residential + apartments + luxury.pptx"
- *   (all lowercase, separated by " + ")
+ *  Returns a normalised object ALWAYS with these 4 lowercase keys:
+ *    { city, assetType, category, specifications }
+ * ─────────────────────────────────────────────────────────────
+ */
+export const normalisePlotContext = (raw = {}) => {
+    // Build a flat, lowercase-key lookup so we're case-insensitive
+    const lookup = {};
+    for (const [k, v] of Object.entries(raw)) {
+        lookup[norm(k).replace(/\s+/g, '')] = v;   // e.g. 'assettype'
+        lookup[norm(k).replace(/[\s_-]+/g, '')] = v; // extra-safe collapse
+    }
+
+    const get = (...aliases) => {
+        for (const alias of aliases) {
+            const key = norm(alias).replace(/[\s_-]+/g, '');
+            if (lookup[key]) return String(lookup[key]).trim();
+        }
+        return '';
+    };
+
+    return {
+        city: get('city'),
+        assetType: get('assettype', 'asset type', 'assetType', 'asset_type'),
+        category: get('category'),
+        specifications: get('specifications', 'specs', 'specification'),
+    };
+};
+
+
+/**
+ * ─────────────────────────────────────────────────────────────
+ *  buildSearchTokens
  *
- * CRITERIA COMING IN (from user form — may have any casing):
- *   ["Dubai", "Residential", "Apartments", "Luxury"]
+ *  Given a normalised context, produce ORDERED tokens that match
+ *  the Library filename convention:
+ *    "city + assetType + category + specifications"
+ *  Only non-empty tokens are included.
+ * ─────────────────────────────────────────────────────────────
+ */
+export const buildSearchTokens = (ctx) => {
+    const n = normalisePlotContext(ctx);
+    return [n.city, n.assetType, n.category, n.specifications]
+        .map(t => norm(t))
+        .filter(Boolean);
+};
+
+
+/**
+ * ─────────────────────────────────────────────────────────────
+ *  findBestMatchFile
  *
- * STRATEGY:
- *   1. Normalise both the criteria and every filename to lowercase
- *   2. Build the expected key: "dubai + residential + apartments + luxury"
- *   3. Try exact match first
- *   4. If no exact match, try partial / fuzzy match (most tokens matched)
- *   5. Return the full path of the best match, or null if nothing found
+ *  Given a folder path and an array of search tokens,
+ *  find the PPTX file whose ` + `-separated name best matches.
+ *
+ *  LIBRARY FILENAME CONVENTION:
+ *    "dubai + residential + apartments + luxury.pptx"
+ *
+ *  STRATEGY
+ *    1. Exact match (normalised tokens == normalised file key)
+ *    2. Fuzzy  match (most tokens found in filename)
+ *    3. Return null if threshold not met
+ * ─────────────────────────────────────────────────────────────
  */
 export const findBestMatchFile = (folderPath, criteria = []) => {
 
-    // ── Guard ────────────────────────────────────────────────────
+    // ── Guard ────────────────────────────────────────────────
     if (!fs.existsSync(folderPath)) {
         console.warn(`[FileMatcher] Folder does not exist: ${folderPath}`);
         return null;
     }
 
-    if (!criteria || criteria.length === 0) {
-        console.warn(`[FileMatcher] No criteria provided`);
+    const tokens = criteria.map(norm).filter(Boolean);
+    if (tokens.length === 0) {
+        console.warn(`[FileMatcher] No criteria/tokens provided`);
         return null;
     }
 
-    // ── Normalise helper ─────────────────────────────────────────
-    const normalise = (str) =>
-        String(str)
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, ' ');          // collapse multiple spaces
-
-    // ── Build the expected key ───────────────────────────────────
-    // e.g. ["Dubai","Residential","Apartments","Luxury"]
-    //   → "dubai + residential + apartments + luxury"
-    const normalisedCriteria = criteria.map(normalise);
-    const expectedKey = normalisedCriteria.join(' + ');
-
-    console.log(`[FileMatcher] Looking in : ${folderPath}`);
+    const expectedKey = tokens.join(' + ');
+    console.log(`[FileMatcher] Looking in  : ${folderPath}`);
     console.log(`[FileMatcher] Expected key: "${expectedKey}"`);
 
-    // ── Read all PPTX files in the folder ────────────────────────
-    const files = fs.readdirSync(folderPath).filter(f =>
-        f.toLowerCase().endsWith('.pptx') && !f.startsWith('~$')
-    );
+    // ── Read PPTX files ──────────────────────────────────────
+    const files = fs.readdirSync(folderPath)
+        .filter(f => f.toLowerCase().endsWith('.pptx') && !f.startsWith('~$'));
 
     if (files.length === 0) {
-        console.warn(`[FileMatcher] No PPTX files found in: ${folderPath}`);
+        console.warn(`[FileMatcher] No PPTX files in: ${folderPath}`);
         return null;
     }
 
-    // ── Step 1: Exact match (after normalising filename) ─────────
+    // ── Step 1: Exact match ──────────────────────────────────
     for (const file of files) {
-        // Strip .pptx extension and normalise
-        const fileKey = normalise(file.replace(/\.pptx$/i, ''));
+        const fileKey = norm(file.replace(/\.pptx$/i, ''));
         if (fileKey === expectedKey) {
             console.log(`[FileMatcher] ✅ Exact match: "${file}"`);
             return path.join(folderPath, file);
         }
     }
 
-    // ── Step 2: Fuzzy match — score each file by how many
-    //           criteria tokens appear in the filename ────────────
+    // ── Step 2: Fuzzy match ──────────────────────────────────
     let bestFile = null;
     let bestScore = 0;
 
     for (const file of files) {
-        const fileKey = normalise(file.replace(/\.pptx$/i, ''));
-
-        // Split file key into tokens (split on " + " or spaces or underscores)
+        const fileKey = norm(file.replace(/\.pptx$/i, ''));
         const fileTokens = fileKey.split(/\s*\+\s*|\s+|_/).map(t => t.trim()).filter(Boolean);
 
         let score = 0;
-        for (const criterion of normalisedCriteria) {
-            // Check if this criterion appears anywhere in the file key
-            if (fileKey.includes(criterion)) {
-                score++;
+        for (const token of tokens) {
+            if (fileKey.includes(token)) {
+                score++;                        // full token found
             } else {
-                // Try partial: each word of the criterion appears
-                const words = criterion.split(/\s+/);
-                const allWordsFound = words.every(w => fileTokens.some(t => t.includes(w)));
-                if (allWordsFound) score += 0.5;
+                const words = token.split(/\s+/);
+                if (words.every(w => fileTokens.some(ft => ft.includes(w)))) {
+                    score += 0.5;              // partial word match
+                }
             }
         }
 
@@ -100,17 +149,18 @@ export const findBestMatchFile = (folderPath, criteria = []) => {
         }
     }
 
-    // Only accept fuzzy match if at least half the criteria matched
-    const threshold = normalisedCriteria.length / 2;
+    // Accept if at least half of criteria matched
+    const threshold = tokens.length / 2;
     if (bestFile && bestScore >= threshold) {
-        console.log(`[FileMatcher] Fuzzy match (score ${bestScore}/${normalisedCriteria.length}): "${bestFile}"`);
+        console.log(`[FileMatcher] 🟡 Fuzzy match (${bestScore}/${tokens.length}): "${bestFile}"`);
         return path.join(folderPath, bestFile);
     }
 
-    // ── No match ─────────────────────────────────────────────────
-    console.warn(`[FileMatcher] No match found for key: "${expectedKey}"`);
-    console.warn(`[FileMatcher]    Available files: ${files.join(', ')}`);
+    // ── No suitable match ────────────────────────────────────
+    console.warn(`[FileMatcher] ❌ No match for: "${expectedKey}"`);
+    console.warn(`[FileMatcher]    Available   : ${files.join(', ')}`);
     return null;
 };
 
-export default { findBestMatchFile };
+
+export default { findBestMatchFile, normalisePlotContext, buildSearchTokens };

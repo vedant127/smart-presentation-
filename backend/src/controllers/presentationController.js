@@ -1,6 +1,6 @@
 import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
-import { assemblePresentation } from '../services/presentationServiceNew.js';
+import { assemblePresentation } from '../services/presentationServiceEnhanced.js';
 
 
 /**

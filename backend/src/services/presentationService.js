@@ -44,18 +44,39 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
     });
 
     // 1.1 Load Root Template (MUST have correct dimensions: 20" × 11.2")
-    let libraryRoot = path.join(process.cwd(), 'Library');
-    if (!fs.existsSync(libraryRoot)) {
-        libraryRoot = path.join(process.cwd(), '..', 'Library');
+    const baseDir = process.cwd();
+    let templatesDir = path.resolve(baseDir, 'templates');
+    if (!fs.existsSync(templatesDir)) {
+        templatesDir = path.resolve(baseDir, '..', 'templates');
     }
 
-    const rootTemplatePath = path.join(libraryRoot, 'RootTemplate.pptx');
-    if (fs.existsSync(rootTemplatePath)) {
+    // Check multiple possible locations for RootTemplate.pptx
+    const possiblePaths = [
+        path.join(templatesDir, 'RootTemplate.pptx'),
+        path.join(baseDir, 'Library', 'RootTemplate.pptx'),
+        path.join(baseDir, '..', 'Library', 'RootTemplate.pptx')
+    ];
+
+    let rootTemplatePath = null;
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            rootTemplatePath = p;
+            break;
+        }
+    }
+
+    if (rootTemplatePath) {
         automizer.loadRoot(rootTemplatePath);
         console.log(`   ✅ Loaded Root Template: ${rootTemplatePath}`);
     } else {
-        console.error(`CRITICAL: RootTemplate.pptx missing at ${rootTemplatePath}`);
-        throw new Error(`SYSTEM ERROR: RootTemplate.pptx missing. Please create it with dimensions 20" × 11.2"`);
+        console.error(`CRITICAL: RootTemplate.pptx missing. Checked: [${possiblePaths.join(', ')}]`);
+        throw new Error(`SYSTEM ERROR: RootTemplate.pptx missing. Please ensure it exists in the 'templates' folder with dimensions 20" × 11.2"`);
+    }
+
+    // Restore libraryRoot for finding sections
+    let libraryRoot = path.join(baseDir, 'Library');
+    if (!fs.existsSync(libraryRoot)) {
+        libraryRoot = path.join(baseDir, '..', 'Library');
     }
 
     // 2. Normalize Plots Data
