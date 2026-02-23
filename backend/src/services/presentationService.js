@@ -114,8 +114,8 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
     for (const section of sections) {
         console.log(`\n🎵 Processing Section ${section.order}: "${section.name}" (${section.isVarying ? 'Varying' : 'Fixed'})`);
 
-        // Locate Section Folder
-        const typeFolderName = presentationType.name;
+        // Locate Section Folder — use the correct lowercase folder name
+        const typeFolderName = 'feasibility_study';
         const sectionFolderName = section.folderPath || section.name;
         const sectionDir = path.join(libraryRoot, typeFolderName, sectionFolderName);
 

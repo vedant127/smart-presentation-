@@ -2,27 +2,41 @@ import path from 'path';
 import fs from 'fs';
 import { findBestMatchFile, normalisePlotContext, buildSearchTokens } from '../utils/fileMatcher.js';
 
-// Configuration of the 11-Section Structure for Feasibility Study
-// Maps logical Section Number (1-11) to Library Folder and behavior
+// ──────────────────────────────────────────────────────────────────────────────
+// Configuration of the 10-Section Structure for Feasibility Study
+// Maps logical Section Number (1-10) to Library Folder and behavior
+//
+// CORRECT folder structure (lowercase + underscores):
+//   Library/feasibility_study/
+//     01_cover_page/           → main.pptx  (fixed)
+//     02_table_of_contents/    → main.pptx  (fixed)
+//     03_project_background/   → main.pptx  (fixed)
+//     04_executive_summary/    → main.pptx  (fixed)
+//     05_site_assessment/      → main.pptx  (fixed)
+//     06_market_overview/      → combo.pptx (varying)
+//     07_dev_recommendations_part1/ → main.pptx (fixed)
+//     08_dev_recommendations_part2/ → combo.pptx (varying)
+//     09_financial_analysis/   → main.pptx  (fixed)
+//     10_disclaimer/           → main.pptx  (fixed)
+// ──────────────────────────────────────────────────────────────────────────────
 const SLIDE_MAPPING = [
-    { id: 1, name: 'Cover Page', folder: '01_Cover Page', vary: false, filename: 'cover.pptx' },
-    { id: 2, name: 'Table of Contents', folder: '02_Table of Contents', vary: false, filename: 'toc.pptx' },
-    { id: 3, name: 'Project Background', folder: '03_Project Background', vary: false, filename: 'project_background.pptx' },
-    { id: 4, name: 'Executive Summary', folder: '04_Executive Summary', vary: false, filename: 'executive_summary.pptx' },
-    { id: 5, name: 'Site Assessment', folder: '05_Site Assessment', vary: false, filename: 'site_assessment.pptx' },
-    { id: 6, name: 'Market Overview', folder: '06_Market Overview', vary: true },
-    { id: 7, name: 'Development Recommendations Part 1', folder: '07_Development Recommendations Part 1', vary: false, filename: 'development recommendations PART 1.pptx' },
-    { id: 8, name: 'Development Recommendations Part 2', folder: '08_Development Recommendations Part 2', vary: true },
-    { id: 9, name: 'Development Recommendations Part 3', folder: '09_Development Recommendations Part 3', vary: false, filename: 'development recommendations PART 3.pptx' },
-    { id: 10, name: 'Financial & Investment Analysis', folder: '10_Financial & Investment Analysis', vary: false, filename: 'financial and investment analysis.pptx' },
-    { id: 11, name: 'Disclaimer', folder: '11_Disclaimer', vary: false, filename: 'disclaimer.pptx' },
+    { id: 1, name: 'Cover Page', folder: '01_cover_page', vary: false, filename: 'main.pptx' },
+    { id: 2, name: 'Table of Contents', folder: '02_table_of_contents', vary: false, filename: 'main.pptx' },
+    { id: 3, name: 'Project Background', folder: '03_project_background', vary: false, filename: 'main.pptx' },
+    { id: 4, name: 'Executive Summary', folder: '04_executive_summary', vary: false, filename: 'main.pptx' },
+    { id: 5, name: 'Site Assessment', folder: '05_site_assessment', vary: false, filename: 'main.pptx' },
+    { id: 6, name: 'Market Overview', folder: '06_market_overview', vary: true },
+    { id: 7, name: 'Development Recommendations Part 1', folder: '07_dev_recommendations_part1', vary: false, filename: 'main.pptx' },
+    { id: 8, name: 'Development Recommendations Part 2', folder: '08_dev_recommendations_part2', vary: true },
+    { id: 9, name: 'Financial Analysis', folder: '09_financial_analysis', vary: false, filename: 'main.pptx' },
+    { id: 10, name: 'Disclaimer', folder: '10_disclaimer', vary: false, filename: 'main.pptx' },
 ];
 
 // Helper to determine Library Root for Feasibility Study
 const getLibraryRoot = () => {
-    let root = path.join(process.cwd(), 'Library', 'Feasibility Study');
+    let root = path.join(process.cwd(), 'Library', 'feasibility_study');
     if (!fs.existsSync(root)) {
-        root = path.join(process.cwd(), '..', 'Library', 'Feasibility Study');
+        root = path.join(process.cwd(), '..', 'Library', 'feasibility_study');
     }
     return root;
 };

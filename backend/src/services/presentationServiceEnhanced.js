@@ -58,45 +58,47 @@ const getUniquePlotCombos = (plotContexts) => {
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-//  SLIDE ORDER SPEC — Problem #3
+//  SLIDE ORDER SPEC (10 sections)
 //
 //  The correct order for Feasibility Study is:
 //
 //  FIXED START
-//    01  Cover Page
-//    02  Table of Contents
-//    03  Project Background
-//    04  Executive Summary
-//    05  Site Assessment
+//    01  cover_page              → main.pptx
+//    02  table_of_contents       → main.pptx
+//    03  project_background      → main.pptx
+//    04  executive_summary       → main.pptx
+//    05  site_assessment         → main.pptx
 //
 //  VARYING — one entry per unique plot combo
-//    06  Market Overview           (city + asset type + category + specs)
-//    07  Dev Recommendations Pt 1  (FIXED — added once only)
+//    06  market_overview         → combo.pptx
+//
+//  FIXED MIDDLE
+//    07  dev_recommendations_part1 → main.pptx
 //
 //  VARYING — one entry per unique plot combo
-//    08  Dev Recommendations Pt 2  (city + asset type + category + specs)
+//    08  dev_recommendations_part2 → combo.pptx
 //
 //  FIXED END
-//    09  Dev Recommendations Pt 3
-//    10  Financial & Investment Analysis
-//    11  Disclaimer
-//
-//  We encode this as a playlist with explicit phase markers so the
-//  assembly loop knows when to inject varying blocks.
+//    09  financial_analysis      → main.pptx
+//    10  disclaimer              → main.pptx
 // ──────────────────────────────────────────────────────────────────────────────
 
 // ──────────────────────────────────────────────────────────────────────────────
-//  addOneSlide — add ONLY slide 1 from a PPTX to the automizer
-//  This ensures we get exactly 11 slides total (one per section).
+//  addAllSlides — add EVERY slide from a PPTX to the automizer
+//  Each section's main.pptx contains exactly the slides it should contribute.
+//  e.g. dev_recommendations_part1/main.pptx has 2 slides: header + sizing rationale
 // ──────────────────────────────────────────────────────────────────────────────
-const addOneSlide = (automizer, filePath, slideData, label) => {
+const addAllSlides = (automizer, filePath, slideData, label) => {
+    const total = countSlidesInFile(filePath);
     const key = `k_${label}_${uuidv4().substring(0, 6)}`;
     automizer.load(filePath, key);
-    automizer.addSlide(key, 1, (slide) => {
-        slide.modify(createEnhancedReplacer(slideData));
-    });
-    console.log(`   ▶️  [${label}] 1 slide (of ${countSlidesInFile(filePath)} available) from "${path.basename(filePath)}"`);
-    return 1;
+    for (let i = 1; i <= total; i++) {
+        automizer.addSlide(key, i, (slide) => {
+            slide.modify(createEnhancedReplacer(slideData));
+        });
+    }
+    console.log(`   ▶️  [${label}] ${total} slide(s) from "${path.basename(filePath)}"`);
+    return total;
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -160,9 +162,10 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
     console.log(`   ✅ Root Template: ${rootTemplatePath}`);
 
     // ── 3. Library root ───────────────────────────────────────────────────
+    // Use lowercase folder name 'feasibility_study' (not presentationType.name)
     let libRoot = path.join(baseDir, 'Library');
     if (!fs.existsSync(libRoot)) libRoot = path.join(baseDir, '..', 'Library');
-    const typeDir = path.join(libRoot, presentationType.name);
+    const typeDir = path.join(libRoot, 'feasibility_study');
 
     // ── 4. Normalise all plot contexts (Problem #2: key normalisation) ────
     const rawContexts = (plots && plots.length > 0)
@@ -202,13 +205,9 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
         ...formData,
     };
 
-    // ── 6. CORRECT SLIDE ORDER — Problem #3 ──────────────────────────────
-    //
-    //  We manually walk through the 11-section playlist in the exact order
-    //  described in the spec rather than blindly iterating the DB sections.
-    //  This guarantees:
-    //    Fixed start → Market Overviews (per unique combo) → Fixed middle
-    //    → Dev Recs Pt 2 (per unique combo) → Fixed end
+    // ── 6. CORRECT SLIDE ORDER (10 sections) ─────────────────────────────
+    //  Walk through the 10-section playlist in exact order.
+    //  Fixed start → Market Overviews → Fixed middle → Dev Recs Pt 2 → Fixed end
     //
 
     let slideCount = 0;
@@ -221,7 +220,7 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
             console.warn(`   ⚠️  [${label}] File not found — skipped.`);
             return;
         }
-        slideCount += addOneSlide(automizer, file, globalData, label);
+        slideCount += addAllSlides(automizer, file, globalData, label);
     };
 
     /** Helper: add a varying section for ONE combo context */
@@ -239,42 +238,38 @@ export const assemblePresentation = async ({ presentationType, formData, plots, 
             CATEGORY: ctx.category || globalData.CATEGORY,
             SPECIFICATIONS: ctx.specifications || globalData.SPECIFICATIONS,
         };
-        slideCount += addOneSlide(automizer, file, slideData, label);
+        slideCount += addAllSlides(automizer, file, slideData, label);
     };
 
     // ── FIXED START ───────────────────────────────────────────────────────
     console.log('\n─── FIXED START ─────────────────────────────────────');
-    await addFixed('01_Cover Page', 'cover.pptx', 'Cover');
-    await addFixed('02_Table of Contents', 'toc.pptx', 'TOC');
-    await addFixed('03_Project Background', 'project_background.pptx', 'ProjectBG');
-    await addFixed('04_Executive Summary', 'executive_summary.pptx', 'ExecSummary');
-    await addFixed('05_Site Assessment', 'site_assessment.pptx', 'SiteAssessment');
+    await addFixed('01_cover_page', 'main.pptx', 'Cover');
+    await addFixed('02_table_of_contents', 'main.pptx', 'TOC');
+    await addFixed('03_project_background', 'main.pptx', 'ProjectBG');
+    await addFixed('04_executive_summary', 'main.pptx', 'ExecSummary');
+    await addFixed('05_site_assessment', 'main.pptx', 'SiteAssessment');
 
     // ── VARYING: Market Overview (one block per unique combo) ─────────────
     console.log('\n─── MARKET OVERVIEW (per unique plot combo) ─────────');
     for (const ctx of uniqueCtxList) {
-        addVarying('06_Market Overview', ctx, `MarketOverview:${ctx.city}+${ctx.assetType}`);
+        addVarying('06_market_overview', ctx, `MarketOverview:${ctx.city}+${ctx.assetType}`);
     }
 
     // ── FIXED MIDDLE ──────────────────────────────────────────────────────
     console.log('\n─── FIXED MIDDLE ────────────────────────────────────');
-    await addFixed('07_Development Recommendations Part 1',
-        'development recommendations PART 1.pptx', 'DevRec1');
+    await addFixed('07_dev_recommendations_part1', 'main.pptx', 'DevRec1');
 
     // ── VARYING: Dev Recs Pt 2 (one block per unique combo) ──────────────
     console.log('\n─── DEV RECS PART 2 (per unique plot combo) ─────────');
     for (const ctx of uniqueCtxList) {
-        addVarying('08_Development Recommendations Part 2', ctx,
+        addVarying('08_dev_recommendations_part2', ctx,
             `DevRec2:${ctx.city}+${ctx.assetType}`);
     }
 
     // ── FIXED END ─────────────────────────────────────────────────────────
     console.log('\n─── FIXED END ───────────────────────────────────────');
-    await addFixed('09_Development Recommendations Part 3',
-        'development recommendations PART 3.pptx', 'DevRec3');
-    await addFixed('10_Financial & Investment Analysis',
-        'financial and investment analysis.pptx', 'FinancialAnalysis');
-    await addFixed('11_Disclaimer', 'disclaimer.pptx', 'Disclaimer');
+    await addFixed('09_financial_analysis', 'main.pptx', 'FinancialAnalysis');
+    await addFixed('10_disclaimer', 'main.pptx', 'Disclaimer');
 
     // ── 7. Write file ─────────────────────────────────────────────────────
     const shortId = uuidv4().substring(0, 8);

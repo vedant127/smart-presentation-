@@ -150,10 +150,13 @@ export const assemblePresentation = async ({ presentationType, formData = {}, pl
             if (count === 0) continue;
             const loadKey = `sec${step.id}_${uuidv4().substring(0, 4)}`;
             automizer.load(comp.path, loadKey);
-            // Only add slide 1 from each PPTX — ensures exactly 11 slides total
-            automizer.addSlide(loadKey, 1);
-            totalSlidesAdded++;
-            console.log(`   [Section ${step.id}] Merged: ${path.basename(comp.path)} (1 of ${count} slides)`);
+            // Add ALL slides from each PPTX — each file is curated to have exactly
+            // the right slides (e.g. dev_recs_part1 has 2: header + sizing rationale)
+            for (let i = 1; i <= count; i++) {
+                automizer.addSlide(loadKey, i);
+                totalSlidesAdded++;
+            }
+            console.log(`   [Section ${step.id}] Merged: ${path.basename(comp.path)} (${count} slides)`);
         }
     }
 

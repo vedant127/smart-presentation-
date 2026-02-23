@@ -43,8 +43,8 @@ const run = async () => {
     console.log('\n─────────────────────────────────────────────');
     console.log(`OUTPUT FILE : ${result.fileName}`);
     console.log(`TOTAL SLIDES: ${result.slideCount}`);
-    if (result.slideCount >= 11 && result.slideCount <= 13) {
-        console.log('✅ PASS — slide count is correct (11-13 for 2 unique combos)');
+    if (result.slideCount >= 10 && result.slideCount <= 12) {
+        console.log('✅ PASS — slide count is correct (10-12 for 2 unique combos)');
     } else {
         console.error(`⛔ WARN — unexpected slide count: ${result.slideCount} (expected 11-13)`);
     }
