@@ -1,101 +1,90 @@
 import path from 'path';
 import fs from 'fs';
-import { findBestMatchFile, normalisePlotContext, buildSearchTokens } from '../utils/fileMatcher.js';
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Configuration of the 10-Section Structure for Feasibility Study
-// Maps logical Section Number (1-10) to Library Folder and behavior
+// ══════════════════════════════════════════════════════════════════════════════
+//  MAPPING SERVICE
 //
-// CORRECT folder structure (lowercase + underscores):
-//   Library/feasibility_study/
-//     01_cover_page/           → main.pptx  (fixed)
-//     02_table_of_contents/    → main.pptx  (fixed)
-//     03_project_background/   → main.pptx  (fixed)
-//     04_executive_summary/    → main.pptx  (fixed)
-//     05_site_assessment/      → main.pptx  (fixed)
-//     06_market_overview/      → combo.pptx (varying)
-//     07_dev_recommendations_part1/ → main.pptx (fixed)
-//     08_dev_recommendations_part2/ → combo.pptx (varying)
-//     09_financial_analysis/   → main.pptx  (fixed)
-//     10_disclaimer/           → main.pptx  (fixed)
-// ──────────────────────────────────────────────────────────────────────────────
+//  Defines the 10-section structure for Feasibility Study.
+//  NO number prefixes. NO AI. Clean folder names.
+//
+//  Library/feasibility_study/
+//    cover_page/main.pptx                          ← fixed
+//    table_of_contents/main.pptx                   ← fixed
+//    project_background/main.pptx                  ← fixed
+//    executive_summary/main.pptx                   ← fixed
+//    site_assessment/main.pptx                     ← fixed
+//    market_overview/{plotkey}.pptx                 ← varying
+//    dev_recommendations_part1/main.pptx           ← fixed
+//    dev_recommendations_part2/{plotkey}.pptx       ← varying
+//    financial_investment_analysis/main.pptx        ← fixed
+//    disclaimer/main.pptx                          ← fixed
+// ══════════════════════════════════════════════════════════════════════════════
+
 const SLIDE_MAPPING = [
-    { id: 1, name: 'Cover Page', folder: '01_cover_page', vary: false, filename: 'main.pptx' },
-    { id: 2, name: 'Table of Contents', folder: '02_table_of_contents', vary: false, filename: 'main.pptx' },
-    { id: 3, name: 'Project Background', folder: '03_project_background', vary: false, filename: 'main.pptx' },
-    { id: 4, name: 'Executive Summary', folder: '04_executive_summary', vary: false, filename: 'main.pptx' },
-    { id: 5, name: 'Site Assessment', folder: '05_site_assessment', vary: false, filename: 'main.pptx' },
-    { id: 6, name: 'Market Overview', folder: '06_market_overview', vary: true },
-    { id: 7, name: 'Development Recommendations Part 1', folder: '07_dev_recommendations_part1', vary: false, filename: 'main.pptx' },
-    { id: 8, name: 'Development Recommendations Part 2', folder: '08_dev_recommendations_part2', vary: true },
-    { id: 9, name: 'Financial Analysis', folder: '09_financial_analysis', vary: false, filename: 'main.pptx' },
-    { id: 10, name: 'Disclaimer', folder: '10_disclaimer', vary: false, filename: 'main.pptx' },
+    { id: 1, name: 'Cover Page', folder: 'cover_page', vary: false, filename: 'main.pptx' },
+    { id: 2, name: 'Table of Contents', folder: 'table_of_contents', vary: false, filename: 'main.pptx' },
+    { id: 3, name: 'Project Background', folder: 'project_background', vary: false, filename: 'main.pptx' },
+    { id: 4, name: 'Executive Summary', folder: 'executive_summary', vary: false, filename: 'main.pptx' },
+    { id: 5, name: 'Site Assessment', folder: 'site_assessment', vary: false, filename: 'main.pptx' },
+    { id: 6, name: 'Market Overview', folder: 'market_overview', vary: true },
+    { id: 7, name: 'Dev Recommendations Part 1', folder: 'dev_recommendations_part1', vary: false, filename: 'main.pptx' },
+    { id: 8, name: 'Dev Recommendations Part 2', folder: 'dev_recommendations_part2', vary: true },
+    { id: 9, name: 'Financial & Investment Analysis', folder: 'financial_investment_analysis', vary: false, filename: 'main.pptx' },
+    { id: 10, name: 'Disclaimer', folder: 'disclaimer', vary: false, filename: 'main.pptx' },
 ];
 
-// Helper to determine Library Root for Feasibility Study
-const getLibraryRoot = () => {
-    let root = path.join(process.cwd(), 'Library', 'feasibility_study');
-    if (!fs.existsSync(root)) {
-        root = path.join(process.cwd(), '..', 'Library', 'feasibility_study');
-    }
+function getLibraryRoot() {
+    const cwd = process.cwd();
+    let root = path.join(cwd, 'Library', 'feasibility_study');
+    if (!fs.existsSync(root)) root = path.join(cwd, '..', 'Library', 'feasibility_study');
     return root;
-};
+}
 
-/**
- * resolveSlideComponents
- *
- * Resolve the PPTX file path for a given slide slot + plot context.
- * Accepts ANY key casing in the context (City, city, 'Asset Type', assetType, etc.)
- */
-export const resolveSlideComponents = (slideId, rawContext = {}) => {
+// Plot key: converts plot data to filename
+function makePlotKey(plot) {
+    return [
+        plot.city || plot.City || '',
+        plot.assetType || plot['Asset Type'] || plot.asset_type || '',
+        plot.category || plot.Category || '',
+        plot.specs || plot.specifications || plot.Specifications || '',
+    ]
+        .join('_')
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '');
+}
+
+export const resolveSlideComponents = (slideId, plotData = {}) => {
     const root = getLibraryRoot();
     const config = SLIDE_MAPPING.find(s => s.id === slideId);
     if (!config) return null;
 
     const folderPath = path.join(root, config.folder);
-    if (!fs.existsSync(folderPath)) {
-        console.warn(`[MappingService] Missing folder: ${config.folder}`);
-        return null;
-    }
+    if (!fs.existsSync(folderPath)) return null;
 
-    // ── Fixed (Non-Varying) Sections ─────────────────────────
+    // Fixed section
     if (!config.vary) {
-        if (config.filename) {
-            const specificPath = path.join(folderPath, config.filename);
-            if (fs.existsSync(specificPath)) {
-                return { path: specificPath, type: 'fixed', name: config.name };
-            }
-        }
-        // Fallback: first PPTX in folder
-        const files = fs.readdirSync(folderPath)
-            .filter(f => f.toLowerCase().endsWith('.pptx') && !f.startsWith('~$'));
-        if (files.length > 0) {
-            return { path: path.join(folderPath, files[0]), type: 'fixed', name: config.name };
+        const filePath = path.join(folderPath, config.filename);
+        if (fs.existsSync(filePath)) {
+            return { path: filePath, type: 'fixed', name: config.name };
         }
         return null;
     }
 
-    // ── Varying Sections (Smart City + Criteria Matching) ────
-    // Normalise FIRST — then build ordered search tokens
-    const ctx = normalisePlotContext(rawContext);
-    const tokens = buildSearchTokens(ctx);
+    // Varying section — use plot key to find file
+    const key = makePlotKey(plotData);
+    if (!key) return null;
 
-    if (tokens.length === 0) {
-        console.warn(`[MappingService] No usable criteria for section "${config.name}". Raw ctx:`, rawContext);
-        return null;
+    const filePath = path.join(folderPath, `${key}.pptx`);
+    if (fs.existsSync(filePath)) {
+        return { path: filePath, type: 'varying', name: config.name };
     }
 
-    const matchPath = findBestMatchFile(folderPath, tokens);
-    if (matchPath) {
-        return { path: matchPath, type: 'varying', name: config.name };
-    }
-
+    console.warn(`[MappingService] File not found: ${key}.pptx in ${config.folder}/`);
     return null;
 };
 
-/**
- * Get the full presentation structure plan
- */
 export const getPresentationPlan = () => SLIDE_MAPPING;
+export { makePlotKey };
 
-export default { resolveSlideComponents, getPresentationPlan };
+export default { resolveSlideComponents, getPresentationPlan, makePlotKey };

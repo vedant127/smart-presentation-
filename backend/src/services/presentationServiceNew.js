@@ -3,171 +3,214 @@ import fs from 'fs';
 import { Automizer } from 'pptx-automizer';
 import { v4 as uuidv4 } from 'uuid';
 import PizZip from 'pizzip';
-import { resolveSlideComponents, getPresentationPlan } from './mappingService.js';
+import JSZip from 'jszip';
 
-// ─── Post-Production Junk Cleaner & Image Injector ───────────
-export const nuclearCleanup = (filePath, dataContext, templatesDir) => {
-    console.log(`   [Nuclear] Starting Post-Production Cleanup: ${path.basename(filePath)}`);
-    const data = fs.readFileSync(filePath);
-    const zip = new PizZip(data);
+// ══════════════════════════════════════════════════════════════════════════════
+//  PRESENTATION SERVICE (New) — Used by projectController.js
+//  Same logic as presentationServiceEnhanced.js
+// ══════════════════════════════════════════════════════════════════════════════
 
-    const slideFiles = Object.keys(zip.files)
-        .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
-        .sort((a, b) => {
-            const numA = parseInt(a.match(/slide(\d+)\.xml/)[1]);
-            const numB = parseInt(b.match(/slide(\d+)\.xml/)[1]);
-            return numA - numB;
-        });
+function makePlotKey(plot) {
+    return [
+        plot.city || plot.City || '',
+        plot.assetType || plot['Asset Type'] || plot.asset_type || '',
+        plot.category || plot.Category || '',
+        plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
+    ]
+        .join('_')
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '');
+}
 
-    const bgImgPath = path.resolve(templatesDir, 'feasibility-study', 'cover-images', 'default.jpg');
-    let bgImgBuffer = null;
-    let bgImgExt = 'jpg';
-    if (fs.existsSync(bgImgPath)) {
-        bgImgBuffer = fs.readFileSync(bgImgPath);
-        bgImgExt = path.extname(bgImgPath).replace('.', '');
+function getUniquePlots(plots) {
+    const seen = new Map();
+    for (const plot of plots) {
+        const key = makePlotKey(plot);
+        if (!seen.has(key)) seen.set(key, plot);
     }
+    return Array.from(seen.values());
+}
 
-    const bgImgName = `global_bg_image.${bgImgExt}`;
-    if (bgImgBuffer) {
-        zip.file(`ppt/media/${bgImgName}`, bgImgBuffer);
+function countSlides(filePath) {
+    try {
+        const zip = new PizZip(fs.readFileSync(filePath));
+        return Object.keys(zip.files)
+            .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
+    } catch { return 0; }
+}
+
+function getLibraryPath() {
+    const cwd = process.cwd();
+    let lib = path.join(cwd, 'Library', 'feasibility_study');
+    if (fs.existsSync(lib)) return lib;
+    lib = path.join(cwd, '..', 'Library', 'feasibility_study');
+    if (fs.existsSync(lib)) return lib;
+    throw new Error('Library/feasibility_study/ folder not found!');
+}
+
+function getRootTemplate() {
+    const cwd = process.cwd();
+    const candidates = [
+        path.join(cwd, 'templates', 'RootTemplate.pptx'),
+        path.join(cwd, '..', 'templates', 'RootTemplate.pptx'),
+        path.join(cwd, 'Library', 'RootTemplate.pptx'),
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return p;
     }
+    const cover = path.join(getLibraryPath(), 'cover_page', 'main.pptx');
+    if (fs.existsSync(cover)) return cover;
+    throw new Error('RootTemplate.pptx not found!');
+}
 
-    slideFiles.forEach(file => {
-        let xml = zip.file(file).asText();
+async function replaceCoverPageTokens(pptxPath, replacements) {
+    const buffer = fs.readFileSync(pptxPath);
+    const zip = await JSZip.loadAsync(buffer);
 
-        // 1. HEAL SPLIT RUNS
-        xml = xml.replace(/<\/a:t><\/a:r><a:r><a:rPr[^>]*\/><a:t[^>]*>/gi, '');
-        xml = xml.replace(/<\/a:t><a:t[^>]*>/gi, '');
+    const slideFiles = Object.keys(zip.files).filter(
+        f => /^ppt\/slides\/slide\d+\.xml$/.test(f)
+    );
 
-        // 2. IMAGE REPLACEMENT
-        if (xml.includes('REPLACE_ME_COVER_IMAGE') && bgImgBuffer) {
-            console.log(`      [Nuclear] Swapping cover placeholder in ${file}`);
-            const blipMatch = xml.match(/<a:blip r:embed="(rId\d+)"[^>]*>/);
-            if (blipMatch) {
-                const rId = blipMatch[1];
-                const relsFile = `ppt/slides/_rels/${path.basename(file)}.rels`;
-                if (zip.file(relsFile)) {
-                    let relsXml = zip.file(relsFile).asText();
-                    const targetMatch = relsXml.match(new RegExp(`Id="${rId}"[^>]*Target="..\\/media\\/([^"]+)"`));
-                    if (targetMatch) {
-                        zip.file(`ppt/media/${targetMatch[1]}`, bgImgBuffer);
-                        xml = xml.replace('REPLACE_ME_COVER_IMAGE', '');
-                    }
-                }
+    let totalReplacements = 0;
+    for (const slidePath of slideFiles) {
+        let xml = await zip.file(slidePath).async('string');
+        let modified = false;
+
+        for (const [token, value] of Object.entries(replacements)) {
+            if (xml.includes(token)) {
+                xml = xml.split(token).join(value);
+                modified = true;
+                totalReplacements++;
             }
         }
 
-        // 3. BACKGROUND INJECTION
-        const headerPatterns = [/PROJECT\s+BACKGROUND/i, /EXECUTIVE\s+SUMMARY/i, /SITE\s+ASSESSMENT/i, /FINANCIAL.*INVESTMENT.*ANALYSIS/i, /MARKET\s+OVERVIEW/i, /DEVELOPMENT\s+RECOMMENDATIONS/i, /FEASIBILITY\s+STUDY/i, /TABLE\s+OF\s+CONTENTS/i];
-        if (headerPatterns.some(p => p.test(xml)) && bgImgBuffer && !xml.includes('<p:bg>')) {
-            const relsFile = `ppt/slides/_rels/${path.basename(file)}.rels`;
-            let relsXml = zip.file(relsFile) ? zip.file(relsFile).asText() : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
-            const idMatches = relsXml.match(/Id="rId(\d+)"/g);
-            let maxId = 50;
-            if (idMatches) idMatches.forEach(m => { const id = parseInt(m.match(/Id="rId(\d+)"/)[1]); if (id > maxId) maxId = id; });
-            const newRId = `rId${maxId + 1}`;
-            relsXml = relsXml.replace('</Relationships>', `<Relationship Id="${newRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${bgImgName}"/></Relationships>`);
-            zip.file(relsFile, relsXml);
-            const bgXml = `<p:bg><p:bgPr><a:blipFill><a:blip r:embed="${newRId}"><a:lum/></a:blip><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst><a:duotone><a:schemeClr val="accent1"/><a:schemeClr val="bg1"/></a:duotone></a:effectLst></p:bgPr></p:bg>`;
-            const cSldMatch = xml.match(/<p:cSld([^>]*)>/);
-            if (cSldMatch) xml = xml.replace(cSldMatch[0], cSldMatch[0] + bgXml);
-        }
-
-        // 4. DATA REPLACEMENT
-        if (dataContext) {
-            Object.keys(dataContext).forEach(key => {
-                const val = String(dataContext[key] || "");
-                const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, 'gi');
-                xml = xml.replace(regex, val);
+        // Handle PowerPoint split-tag issue
+        for (const [token, value] of Object.entries(replacements)) {
+            const paragraphRegex = /<a:p\b[^>]*>[\s\S]*?<\/a:p>/g;
+            xml = xml.replace(paragraphRegex, (paragraph) => {
+                const textParts = [];
+                const textRegex = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
+                let m;
+                while ((m = textRegex.exec(paragraph)) !== null) textParts.push(m[1]);
+                const fullText = textParts.join('');
+                if (fullText.includes(token)) {
+                    const replacedText = fullText.split(token).join(value);
+                    let firstRun = true;
+                    return paragraph.replace(/<a:r\b[^>]*>[\s\S]*?<\/a:r>/g, (run) => {
+                        if (firstRun) {
+                            firstRun = false;
+                            return run.replace(/<a:t[^>]*>[\s\S]*?<\/a:t>/, `<a:t>${replacedText}</a:t>`);
+                        }
+                        const runText = run.replace(/<[^>]*>/g, '').trim();
+                        if (token.includes(runText) || runText.includes('{') || runText.includes('}')) return '';
+                        return run;
+                    });
+                }
+                return paragraph;
             });
         }
 
-        xml = xml.replace(/{{\s*[^{}]+\s*}}/gi, '');
-        xml = xml.replace(/{{\s*[^{}]+\s*}/gi, '');
-        zip.file(file, xml);
+        if (modified) zip.file(slidePath, xml);
+    }
+
+    if (totalReplacements > 0) {
+        fs.writeFileSync(pptxPath, await zip.generateAsync({ type: 'nodebuffer' }));
+    }
+}
+
+export async function assemblePresentation({ presentationType, formData = {}, plots = [], userId }) {
+    console.log('\n══════════════════════════════════════════');
+    console.log('  ASSEMBLY START (New Service)');
+    console.log('══════════════════════════════════════════');
+
+    const LIBRARY = getLibraryPath();
+
+    const rawPlots = (plots && plots.length > 0)
+        ? plots.map(p => p.criteria || p.data || p)
+        : [formData];
+    const uniquePlots = getUniquePlots(rawPlots);
+    console.log(`   Plots: ${rawPlots.length} total → ${uniquePlots.length} unique`);
+
+    const files = [];
+    files.push({ path: path.join(LIBRARY, 'cover_page', 'main.pptx'), label: 'Cover Page' });
+    files.push({ path: path.join(LIBRARY, 'table_of_contents', 'main.pptx'), label: 'Table of Contents' });
+    files.push({ path: path.join(LIBRARY, 'project_background', 'main.pptx'), label: 'Project Background' });
+    files.push({ path: path.join(LIBRARY, 'executive_summary', 'main.pptx'), label: 'Executive Summary' });
+    files.push({ path: path.join(LIBRARY, 'site_assessment', 'main.pptx'), label: 'Site Assessment' });
+
+    for (const plot of uniquePlots) {
+        const key = makePlotKey(plot);
+        files.push({ path: path.join(LIBRARY, 'market_overview', `${key}.pptx`), label: `Market Overview [${key}]` });
+    }
+
+    files.push({ path: path.join(LIBRARY, 'dev_recommendations_part1', 'main.pptx'), label: 'Dev Recs Part 1' });
+
+    for (const plot of uniquePlots) {
+        const key = makePlotKey(plot);
+        files.push({ path: path.join(LIBRARY, 'dev_recommendations_part2', `${key}.pptx`), label: `Dev Recs Part 2 [${key}]` });
+    }
+
+    files.push({ path: path.join(LIBRARY, 'financial_investment_analysis', 'main.pptx'), label: 'Financial Analysis' });
+    files.push({ path: path.join(LIBRARY, 'disclaimer', 'main.pptx'), label: 'Disclaimer' });
+
+    const validFiles = files.filter(f => {
+        if (fs.existsSync(f.path)) {
+            console.log(`     ✅ ${f.label}`);
+            return true;
+        }
+        console.warn(`     ⚠️  SKIP: ${f.label}`);
+        return false;
     });
 
-    fs.writeFileSync(filePath, zip.generate({ type: 'nodebuffer' }));
-};
-
-const getSlideCount = (filePath) => {
-    try {
-        if (!fs.existsSync(filePath)) return 0;
-        const zip = new PizZip(fs.readFileSync(filePath));
-        return Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
-    } catch { return 0; }
-};
-
-export const assemblePresentation = async ({ presentationType, formData = {}, plots = [], userId }) => {
-    console.log(`\n============== FELIX ASSEMBLY START ==============`);
+    if (validFiles.length === 0) throw new Error('No Library files found!');
 
     const baseDir = process.cwd();
-    const outputDir = path.resolve(baseDir, 'generated');
+    const outputDir = path.join(baseDir, 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-    let templatesDir = path.resolve(baseDir, 'templates');
-    if (!fs.existsSync(templatesDir)) templatesDir = path.resolve(baseDir, '..', 'templates');
+    const automizer = new Automizer({
+        templateDir: baseDir,
+        outputDir,
+        removeExistingSlides: true,
+        cleanup: false,
+    });
+    automizer.loadRoot(getRootTemplate());
 
-    const rootTemplatePath = path.join(templatesDir, 'RootTemplate.pptx');
-    if (!fs.existsSync(rootTemplatePath)) throw new Error(`CRITICAL: RootTemplate.pptx missing at ${rootTemplatePath}`);
-
-    const automizer = new Automizer({ templateDir: baseDir, outputDir: outputDir, removeExistingSlides: true, cleanup: false });
-    automizer.loadRoot(rootTemplatePath);
-
-    const globalData = {
-        PROJECT_NAME: formData.title || formData.projectName || 'Project Name',
-        CLIENT_NAME: formData.clientName || 'Client Name',
-        DATE: new Date().toLocaleDateString('en-GB'),
-        YEAR: String(new Date().getFullYear()),
-        CITY: formData.city || formData.City || '',
-        ASSET_TYPE: formData.assetType || formData.AssetType || '',
-        ...formData
-    };
-
-    const plotContexts = (plots && plots.length > 0) ? plots.map(p => ({ ...globalData, ...(p.criteria || p.data || p) })) : [globalData];
-    const steps = getPresentationPlan();
-
-    let totalSlidesAdded = 0;
-    for (const step of steps) {
-        let componentsToAdd = [];
-        if (!step.vary) {
-            const resolved = resolveSlideComponents(step.id, globalData);
-            if (resolved) componentsToAdd.push(resolved);
-        } else {
-            const addedPaths = new Set();
-            for (const context of plotContexts) {
-                const resolved = resolveSlideComponents(step.id, context);
-                if (resolved && !addedPaths.has(resolved.path)) {
-                    componentsToAdd.push(resolved);
-                    addedPaths.add(resolved.path);
-                }
-            }
-        }
-
-        for (const comp of componentsToAdd) {
-            const count = getSlideCount(comp.path);
-            if (count === 0) continue;
-            const loadKey = `sec${step.id}_${uuidv4().substring(0, 4)}`;
-            automizer.load(comp.path, loadKey);
-            // Add ALL slides from each PPTX — each file is curated to have exactly
-            // the right slides (e.g. dev_recs_part1 has 2: header + sizing rationale)
-            for (let i = 1; i <= count; i++) {
-                automizer.addSlide(loadKey, i);
-                totalSlidesAdded++;
-            }
-            console.log(`   [Section ${step.id}] Merged: ${path.basename(comp.path)} (${count} slides)`);
+    let totalSlides = 0;
+    for (const f of validFiles) {
+        const slides = countSlides(f.path);
+        const loadKey = `f_${totalSlides}_${uuidv4().substring(0, 5)}`;
+        automizer.load(f.path, loadKey);
+        for (let i = 1; i <= slides; i++) {
+            automizer.addSlide(loadKey, i);
+            totalSlides++;
         }
     }
 
-    const finalFileName = `${(formData.title || 'Report').replace(/[^a-z0-9]/gi, '_')}_${uuidv4().substring(0, 6)}.pptx`;
-    const finalPath = path.join(outputDir, finalFileName);
-    await automizer.write(finalFileName);
+    const safeName = (formData.title || 'Report').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
+    const outputFile = `${safeName}_${uuidv4().substring(0, 8)}.pptx`;
+    await automizer.write(outputFile);
+    const outputPath = path.join(outputDir, outputFile);
 
-    nuclearCleanup(finalPath, globalData, templatesDir);
-    console.log(`✅ ASSEMBLY COMPLETE: ${finalFileName} (${totalSlidesAdded} slides)\n`);
+    // Replace cover page tokens
+    const projectName = formData.title || formData.projectName || 'Untitled Project';
+    const clientName = formData.clientName || formData.client_name || 'Confidential Client';
+    await replaceCoverPageTokens(outputPath, {
+        '{{PROJECT_NAME}}': projectName,
+        '{{CLIENT_NAME}}': clientName,
+        '{{DATE}}': new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        '{{YEAR}}': new Date().getFullYear().toString(),
+    });
 
-    return { fileName: finalFileName, filePath: finalPath, slideCount: totalSlidesAdded };
-};
+    console.log(`\n  ✅ DONE: ${outputFile} (${totalSlides} slides)\n`);
+
+    return {
+        fileName: outputFile,
+        filePath: outputPath,
+        fileSize: fs.statSync(outputPath).size,
+        slideCount: totalSlides,
+    };
+}
 
 export default { assemblePresentation };

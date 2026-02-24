@@ -3,330 +3,322 @@ import fs from 'fs';
 import { Automizer } from 'pptx-automizer';
 import { v4 as uuidv4 } from 'uuid';
 import PizZip from 'pizzip';
-import { findBestMatchFile, normalisePlotContext, buildSearchTokens } from '../utils/fileMatcher.js';
+import JSZip from 'jszip';
 
-// ──────────────────────────────────────────────────────────────────────────────
-//  HELPERS
-// ──────────────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+//  PRESENTATION ASSEMBLY SERVICE
+//
+//  Pure file-merge from Library folder.
+//  NO AI content. NO placeholders. NO programmatic slides.
+//  Every slide in the output comes from a real PPTX file in the Library.
+//
+//  After merging, cover page tokens {{PROJECT_NAME}}, {{CLIENT_NAME}},
+//  {{DATE}} are replaced with actual user values.
+// ══════════════════════════════════════════════════════════════════════════════
 
-/** Count slides inside a PPTX (it's just a ZIP) */
-const countSlidesInFile = (filePath) => {
+// ─── Plot Key ────────────────────────────────────────────────────────────────
+function makePlotKey(plot) {
+    return [
+        plot.city || plot.City || '',
+        plot.assetType || plot['Asset Type'] || plot.asset_type || '',
+        plot.category || plot.Category || '',
+        plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
+    ]
+        .join('_')
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '');
+}
+
+// ─── Deduplication ───────────────────────────────────────────────────────────
+function getUniquePlots(plots) {
+    const seen = new Map();
+    for (const plot of plots) {
+        const key = makePlotKey(plot);
+        if (!seen.has(key)) {
+            seen.set(key, plot);
+            console.log(`   [Dedup] ✅ Unique: "${key}"`);
+        } else {
+            console.log(`   [Dedup] ⏭️  Skip duplicate: "${key}"`);
+        }
+    }
+    return Array.from(seen.values());
+}
+
+// ─── Count slides in a PPTX ─────────────────────────────────────────────────
+function countSlides(filePath) {
     try {
         const zip = new PizZip(fs.readFileSync(filePath));
         return Object.keys(zip.files)
             .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
-    } catch { return 1; }
-};
+    } catch { return 0; }
+}
 
-/** Safe string coercion for placeholder replacement */
-const safeText = (val) => {
-    if (val === null || val === undefined) return '';
-    if (typeof val === 'object') return JSON.stringify(val);
-    return String(val);
-};
+// ─── Locate Library folder ──────────────────────────────────────────────────
+function getLibraryPath() {
+    const cwd = process.cwd();
+    let lib = path.join(cwd, 'Library', 'feasibility_study');
+    if (fs.existsSync(lib)) return lib;
+    lib = path.join(cwd, '..', 'Library', 'feasibility_study');
+    if (fs.existsSync(lib)) return lib;
+    throw new Error('Library/feasibility_study/ folder not found!');
+}
 
-/**
- * DEDUPLICATION — Problem #1
- *
- * Given an array of normalised plot contexts, return only the UNIQUE ones.
- * Two plots are considered the same if they have the same
- *   city + assetType + category + specifications  (all lowercased).
- *
- * Returns: Map<comboKey → ctx>  (insertion-ordered, no duplicates)
- */
-const getUniquePlotCombos = (plotContexts) => {
-    const seen = new Map();
-    for (const ctx of plotContexts) {
-        // KEY NORMALISATION — Problem #2:
-        // Always lowercase + trim each field before building the key so
-        // "Riyadh" and "riyadh" (and "RIYADH") all map to the same slot.
-        const key = [
-            (ctx.city || '').toLowerCase().trim(),
-            (ctx.assetType || '').toLowerCase().trim(),
-            (ctx.category || '').toLowerCase().trim(),
-            (ctx.specifications || '').toLowerCase().trim(),
-        ].join(' + ');
-
-        if (!seen.has(key)) {
-            seen.set(key, ctx);
-            console.log(`   [Dedup] Unique combo registered: "${key}"`);
-        } else {
-            console.log(`   [Dedup] Skipping duplicate combo: "${key}"`);
-        }
-    }
-    return seen; // Map<string, ctx>
-};
-
-// ──────────────────────────────────────────────────────────────────────────────
-//  SLIDE ORDER SPEC (10 sections)
-//
-//  The correct order for Feasibility Study is:
-//
-//  FIXED START
-//    01  cover_page              → main.pptx
-//    02  table_of_contents       → main.pptx
-//    03  project_background      → main.pptx
-//    04  executive_summary       → main.pptx
-//    05  site_assessment         → main.pptx
-//
-//  VARYING — one entry per unique plot combo
-//    06  market_overview         → combo.pptx
-//
-//  FIXED MIDDLE
-//    07  dev_recommendations_part1 → main.pptx
-//
-//  VARYING — one entry per unique plot combo
-//    08  dev_recommendations_part2 → combo.pptx
-//
-//  FIXED END
-//    09  financial_analysis      → main.pptx
-//    10  disclaimer              → main.pptx
-// ──────────────────────────────────────────────────────────────────────────────
-
-// ──────────────────────────────────────────────────────────────────────────────
-//  addAllSlides — add EVERY slide from a PPTX to the automizer
-//  Each section's main.pptx contains exactly the slides it should contribute.
-//  e.g. dev_recommendations_part1/main.pptx has 2 slides: header + sizing rationale
-// ──────────────────────────────────────────────────────────────────────────────
-const addAllSlides = (automizer, filePath, slideData, label) => {
-    const total = countSlidesInFile(filePath);
-    const key = `k_${label}_${uuidv4().substring(0, 6)}`;
-    automizer.load(filePath, key);
-    for (let i = 1; i <= total; i++) {
-        automizer.addSlide(key, i, (slide) => {
-            slide.modify(createEnhancedReplacer(slideData));
-        });
-    }
-    console.log(`   ▶️  [${label}] ${total} slide(s) from "${path.basename(filePath)}"`);
-    return total;
-};
-
-// ──────────────────────────────────────────────────────────────────────────────
-//  pickFile — pick the right PPTX from a section folder
-//    For FIXED sections: uses first file (or explicit filename).
-//    For VARYING sections: uses FileMatcher to find best combo match.
-// ──────────────────────────────────────────────────────────────────────────────
-const pickFile = (sectionDir, ctx = null, fixedFilename = null) => {
-    if (!fs.existsSync(sectionDir)) return null;
-
-    // Fixed section — use named file or first pptx
-    if (!ctx) {
-        if (fixedFilename) {
-            const p = path.join(sectionDir, fixedFilename);
-            if (fs.existsSync(p)) return p;
-        }
-        const files = fs.readdirSync(sectionDir)
-            .filter(f => f.toLowerCase().endsWith('.pptx') && !f.startsWith('~$'));
-        return files.length > 0 ? path.join(sectionDir, files[0]) : null;
-    }
-
-    // Varying section — match by normalised combo tokens
-    const tokens = buildSearchTokens(ctx);
-    if (tokens.length === 0) return null;
-    return findBestMatchFile(sectionDir, tokens);
-};
-
-// ──────────────────────────────────────────────────────────────────────────────
-//  MAIN ASSEMBLY FUNCTION
-// ──────────────────────────────────────────────────────────────────────────────
-export const assemblePresentation = async ({ presentationType, formData, plots, userId }) => {
-    console.log(`\n╔══════════════════════════════════════════╗`);
-    console.log(`║  ASSEMBLY START: "${presentationType.name}"`.padEnd(43) + '║');
-    console.log(`╚══════════════════════════════════════════╝`);
-    console.log(`   Plots received: ${plots ? plots.length : 0}`);
-
-    // ── 1. Init Automizer ─────────────────────────────────────────────────
-    const baseDir = process.cwd();
-
-    const automizer = new Automizer({
-        templateDir: baseDir,
-        outputDir: path.join(baseDir, 'generated'),
-        removeExistingSlides: true,
-        cleanup: false,
-    });
-
-    // ── 2. Load Root Template ─────────────────────────────────────────────
-    let tplDir = path.resolve(baseDir, 'templates');
-    if (!fs.existsSync(tplDir)) tplDir = path.resolve(baseDir, '..', 'templates');
-
-    const rootCandidates = [
-        path.join(tplDir, 'RootTemplate.pptx'),
-        path.join(baseDir, 'Library', 'RootTemplate.pptx'),
-        path.join(baseDir, '..', 'Library', 'RootTemplate.pptx'),
+// ─── Locate Root Template ───────────────────────────────────────────────────
+function getRootTemplate() {
+    const cwd = process.cwd();
+    const candidates = [
+        path.join(cwd, 'templates', 'RootTemplate.pptx'),
+        path.join(cwd, '..', 'templates', 'RootTemplate.pptx'),
+        path.join(cwd, 'Library', 'RootTemplate.pptx'),
+        path.join(cwd, '..', 'Library', 'RootTemplate.pptx'),
     ];
-    const rootTemplatePath = rootCandidates.find(p => fs.existsSync(p));
-    if (!rootTemplatePath) {
-        throw new Error(`SYSTEM ERROR: RootTemplate.pptx not found. Checked: ${rootCandidates.join(', ')}`);
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return p;
     }
-    automizer.loadRoot(rootTemplatePath);
-    console.log(`   ✅ Root Template: ${rootTemplatePath}`);
+    const lib = getLibraryPath();
+    const cover = path.join(lib, 'cover_page', 'main.pptx');
+    if (fs.existsSync(cover)) return cover;
+    throw new Error('RootTemplate.pptx not found!');
+}
 
-    // ── 3. Library root ───────────────────────────────────────────────────
-    // Use lowercase folder name 'feasibility_study' (not presentationType.name)
-    let libRoot = path.join(baseDir, 'Library');
-    if (!fs.existsSync(libRoot)) libRoot = path.join(baseDir, '..', 'Library');
-    const typeDir = path.join(libRoot, 'feasibility_study');
+// ══════════════════════════════════════════════════════════════════════════════
+//  COVER PAGE TOKEN REPLACEMENT
+//
+//  After merging, opens the output PPTX and replaces template tags
+//  like {{PROJECT_NAME}}, {{CLIENT_NAME}}, {{DATE}} on ALL slides
+//  with actual user values.
+//
+//  This works by modifying the raw XML inside the PPTX (ZIP) file.
+//  PowerPoint sometimes splits text across XML runs, so we also handle
+//  the split-tag case (e.g. <a:r>{{PROJECT</a:r><a:r>_NAME}}</a:r>).
+// ══════════════════════════════════════════════════════════════════════════════
+async function replaceCoverPageTokens(pptxPath, replacements) {
+    console.log('   [TokenReplace] Replacing template tokens...');
+    const buffer = fs.readFileSync(pptxPath);
+    const zip = await JSZip.loadAsync(buffer);
 
-    // ── 4. Normalise all plot contexts (Problem #2: key normalisation) ────
-    const rawContexts = (plots && plots.length > 0)
+    // Get all slide XML files
+    const slideFiles = Object.keys(zip.files).filter(
+        f => /^ppt\/slides\/slide\d+\.xml$/.test(f)
+    );
+
+    let totalReplacements = 0;
+
+    for (const slidePath of slideFiles) {
+        let xml = await zip.file(slidePath).async('string');
+        let modified = false;
+
+        for (const [token, value] of Object.entries(replacements)) {
+            // Direct replacement (token is in one XML run)
+            if (xml.includes(token)) {
+                xml = xml.split(token).join(value);
+                modified = true;
+                totalReplacements++;
+            }
+        }
+
+        // Handle PowerPoint split-tag issue:
+        // PowerPoint may split "{{PROJECT_NAME}}" across multiple <a:r> XML runs.
+        // Strategy: For each <a:p> paragraph, extract all <a:t> text, concatenate,
+        // check for tokens, and if found, consolidate into a single <a:t> with replacement.
+        for (const [token, value] of Object.entries(replacements)) {
+            // Match each paragraph that might contain split tokens
+            const paragraphRegex = /<a:p\b[^>]*>[\s\S]*?<\/a:p>/g;
+            xml = xml.replace(paragraphRegex, (paragraph) => {
+                // Extract all text from <a:t> tags in this paragraph
+                const textParts = [];
+                const textRegex = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
+                let match;
+                while ((match = textRegex.exec(paragraph)) !== null) {
+                    textParts.push(match[1]);
+                }
+                const fullText = textParts.join('');
+
+                // If the concatenated text contains our token, replace it
+                if (fullText.includes(token)) {
+                    const replacedText = fullText.split(token).join(value);
+                    // Replace all <a:t>...</a:t> instances with a single one containing the replaced text
+                    // Keep the first run's formatting, remove others
+                    let firstRun = true;
+                    return paragraph.replace(/<a:r\b[^>]*>[\s\S]*?<\/a:r>/g, (run) => {
+                        if (firstRun) {
+                            firstRun = false;
+                            // Replace the text content in the first run
+                            return run.replace(/<a:t[^>]*>[\s\S]*?<\/a:t>/, `<a:t>${replacedText}</a:t>`);
+                        }
+                        // Check if this run contains part of the token — if so, remove it
+                        const runText = run.replace(/<[^>]*>/g, '').trim();
+                        if (token.includes(runText) || runText.includes('{') || runText.includes('}')) {
+                            return ''; // Remove this split run
+                        }
+                        return run; // Keep non-token runs
+                    });
+                }
+                return paragraph; // No token found, keep as-is
+            });
+        }
+
+        if (modified) {
+            zip.file(slidePath, xml);
+            console.log(`     ✅ ${slidePath} — tokens replaced`);
+        }
+    }
+
+    if (totalReplacements > 0) {
+        const output = await zip.generateAsync({ type: 'nodebuffer' });
+        fs.writeFileSync(pptxPath, output);
+        console.log(`   [TokenReplace] Done — ${totalReplacements} replacement(s) across ${slideFiles.length} slides`);
+    } else {
+        console.log('   [TokenReplace] No tokens found to replace');
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MAIN ASSEMBLY FUNCTION
+// ══════════════════════════════════════════════════════════════════════════════
+export async function assemblePresentation({ presentationType, formData = {}, plots = [], userId }) {
+    console.log('\n══════════════════════════════════════════');
+    console.log('  ASSEMBLY START');
+    console.log('══════════════════════════════════════════');
+
+    const LIBRARY = getLibraryPath();
+    console.log(`   Library: ${LIBRARY}`);
+
+    // ── 1. Normalize plot data ──────────────────────────────────────────
+    const rawPlots = (plots && plots.length > 0)
         ? plots.map(p => p.criteria || p.data || p)
         : [formData];
 
-    const allContexts = rawContexts
-        .map(normalisePlotContext)
-        .filter(ctx => ctx.city || ctx.assetType || ctx.category || ctx.specifications);
+    // ── 2. Deduplicate ──────────────────────────────────────────────────
+    const uniquePlots = getUniquePlots(rawPlots);
+    console.log(`   Plots: ${rawPlots.length} total → ${uniquePlots.length} unique\n`);
 
-    // Fallback: use formData itself
-    if (allContexts.length === 0) {
-        const fd = normalisePlotContext(formData);
-        if (fd.city || fd.assetType) allContexts.push(fd);
+    // ── 3. Build ordered file list from Library ─────────────────────────
+    const files = [];
+
+    // FIXED START
+    files.push({ path: path.join(LIBRARY, 'cover_page', 'main.pptx'), label: 'Cover Page' });
+    files.push({ path: path.join(LIBRARY, 'table_of_contents', 'main.pptx'), label: 'Table of Contents' });
+    files.push({ path: path.join(LIBRARY, 'project_background', 'main.pptx'), label: 'Project Background' });
+    files.push({ path: path.join(LIBRARY, 'executive_summary', 'main.pptx'), label: 'Executive Summary' });
+    files.push({ path: path.join(LIBRARY, 'site_assessment', 'main.pptx'), label: 'Site Assessment' });
+
+    // VARYING — Market Overview
+    for (const plot of uniquePlots) {
+        const key = makePlotKey(plot);
+        files.push({
+            path: path.join(LIBRARY, 'market_overview', `${key}.pptx`),
+            label: `Market Overview [${key}]`,
+        });
     }
 
-    // Problem #1: Deduplication — unique combos only
-    const uniqueCombos = getUniquePlotCombos(allContexts);
-    const uniqueCtxList = [...uniqueCombos.values()];
+    // FIXED MIDDLE
+    files.push({ path: path.join(LIBRARY, 'dev_recommendations_part1', 'main.pptx'), label: 'Dev Recommendations Part 1' });
 
-    console.log(`\n   📊 Unique plot combos after dedup: ${uniqueCtxList.length}`);
-    uniqueCtxList.forEach((c, i) =>
-        console.log(`      [${i + 1}] ${c.city} | ${c.assetType} | ${c.category} | ${c.specifications}`)
-    );
+    // VARYING — Dev Recommendations Part 2
+    for (const plot of uniquePlots) {
+        const key = makePlotKey(plot);
+        files.push({
+            path: path.join(LIBRARY, 'dev_recommendations_part2', `${key}.pptx`),
+            label: `Dev Recommendations Part 2 [${key}]`,
+        });
+    }
 
-    // ── 5. Build globalData for placeholder replacement ───────────────────
-    const firstCtx = uniqueCtxList[0] || {};
-    const globalData = {
-        PROJECT_NAME: formData.projectName || formData.title || 'Real Estate Development Project',
-        CLIENT_NAME: formData.clientName || 'Confidential Client',
-        DATE: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-        YEAR: new Date().getFullYear().toString(),
-        CITY: firstCtx.city || '',
-        ASSET_TYPE: firstCtx.assetType || '',
-        CATEGORY: firstCtx.category || '',
-        SPECIFICATIONS: firstCtx.specifications || '',
-        ...formData,
-    };
+    // FIXED END
+    files.push({ path: path.join(LIBRARY, 'financial_investment_analysis', 'main.pptx'), label: 'Financial & Investment Analysis' });
+    files.push({ path: path.join(LIBRARY, 'disclaimer', 'main.pptx'), label: 'Disclaimer' });
 
-    // ── 6. CORRECT SLIDE ORDER (10 sections) ─────────────────────────────
-    //  Walk through the 10-section playlist in exact order.
-    //  Fixed start → Market Overviews → Fixed middle → Dev Recs Pt 2 → Fixed end
-    //
-
-    let slideCount = 0;
-
-    /** Helper: add a fixed section by folder + optional filename */
-    const addFixed = async (folderName, fixedFilename = null, label = folderName) => {
-        const sectionDir = path.join(typeDir, folderName);
-        const file = pickFile(sectionDir, null, fixedFilename);
-        if (!file) {
-            console.warn(`   ⚠️  [${label}] File not found — skipped.`);
-            return;
+    // ── 4. Filter to existing files ─────────────────────────────────────
+    console.log('   File list:');
+    const validFiles = [];
+    for (const f of files) {
+        if (fs.existsSync(f.path)) {
+            const slides = countSlides(f.path);
+            console.log(`     ✅ ${f.label} (${slides} slide${slides !== 1 ? 's' : ''})`);
+            validFiles.push(f);
+        } else {
+            console.warn(`     ⚠️  SKIP: ${f.label} — file not found: ${path.basename(f.path)}`);
         }
-        slideCount += addAllSlides(automizer, file, globalData, label);
-    };
-
-    /** Helper: add a varying section for ONE combo context */
-    const addVarying = (folderName, ctx, label = folderName) => {
-        const sectionDir = path.join(typeDir, folderName);
-        const file = pickFile(sectionDir, ctx);
-        if (!file) {
-            console.warn(`   ⚠️  [${label}] No match for [${buildSearchTokens(ctx).join(', ')}] — skipped.`);
-            return;
-        }
-        const slideData = {
-            ...globalData,
-            CITY: ctx.city || globalData.CITY,
-            ASSET_TYPE: ctx.assetType || globalData.ASSET_TYPE,
-            CATEGORY: ctx.category || globalData.CATEGORY,
-            SPECIFICATIONS: ctx.specifications || globalData.SPECIFICATIONS,
-        };
-        slideCount += addAllSlides(automizer, file, slideData, label);
-    };
-
-    // ── FIXED START ───────────────────────────────────────────────────────
-    console.log('\n─── FIXED START ─────────────────────────────────────');
-    await addFixed('01_cover_page', 'main.pptx', 'Cover');
-    await addFixed('02_table_of_contents', 'main.pptx', 'TOC');
-    await addFixed('03_project_background', 'main.pptx', 'ProjectBG');
-    await addFixed('04_executive_summary', 'main.pptx', 'ExecSummary');
-    await addFixed('05_site_assessment', 'main.pptx', 'SiteAssessment');
-
-    // ── VARYING: Market Overview (one block per unique combo) ─────────────
-    console.log('\n─── MARKET OVERVIEW (per unique plot combo) ─────────');
-    for (const ctx of uniqueCtxList) {
-        addVarying('06_market_overview', ctx, `MarketOverview:${ctx.city}+${ctx.assetType}`);
     }
 
-    // ── FIXED MIDDLE ──────────────────────────────────────────────────────
-    console.log('\n─── FIXED MIDDLE ────────────────────────────────────');
-    await addFixed('07_dev_recommendations_part1', 'main.pptx', 'DevRec1');
-
-    // ── VARYING: Dev Recs Pt 2 (one block per unique combo) ──────────────
-    console.log('\n─── DEV RECS PART 2 (per unique plot combo) ─────────');
-    for (const ctx of uniqueCtxList) {
-        addVarying('08_dev_recommendations_part2', ctx,
-            `DevRec2:${ctx.city}+${ctx.assetType}`);
+    if (validFiles.length === 0) {
+        throw new Error('No Library PPTX files found! Check Library/feasibility_study/ folder.');
     }
 
-    // ── FIXED END ─────────────────────────────────────────────────────────
-    console.log('\n─── FIXED END ───────────────────────────────────────');
-    await addFixed('09_financial_analysis', 'main.pptx', 'FinancialAnalysis');
-    await addFixed('10_disclaimer', 'main.pptx', 'Disclaimer');
-
-    // ── 7. Write file ─────────────────────────────────────────────────────
-    const shortId = uuidv4().substring(0, 8);
-    const safeTitle = (formData.title || formData.projectName || 'Presentation')
-        .replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
-    const outputFile = `${safeTitle}_${shortId}.pptx`;
+    // ── 5. Merge all PPTX files ─────────────────────────────────────────
+    const baseDir = process.cwd();
     const outputDir = path.join(baseDir, 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+    const rootTemplate = getRootTemplate();
+    console.log(`\n   Root Template: ${rootTemplate}`);
+
+    const automizer = new Automizer({
+        templateDir: baseDir,
+        outputDir,
+        removeExistingSlides: true,
+        cleanup: false,
+    });
+    automizer.loadRoot(rootTemplate);
+
+    let totalSlides = 0;
+    for (const f of validFiles) {
+        const slides = countSlides(f.path);
+        const loadKey = `file_${totalSlides}_${uuidv4().substring(0, 5)}`;
+        automizer.load(f.path, loadKey);
+        for (let i = 1; i <= slides; i++) {
+            automizer.addSlide(loadKey, i);
+            totalSlides++;
+        }
+    }
+
+    // ── 6. Write output file ────────────────────────────────────────────
+    const safeName = (formData.title || formData.projectName || 'Report')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .substring(0, 40);
+    const outputFile = `${safeName}_${uuidv4().substring(0, 8)}.pptx`;
 
     await automizer.write(outputFile);
     const outputPath = path.join(outputDir, outputFile);
 
-    // ── 8. Nuclear post-processor (placeholder replace + image inject) ────
-    try {
-        const { nuclearCleanup } = await import('./presentationServiceNew.js');
-        if (typeof nuclearCleanup === 'function') {
-            nuclearCleanup(outputPath, globalData, tplDir);
-        }
-    } catch (e) {
-        console.warn('   [NuclearCleanup] Skipped:', e.message);
-    }
+    // ── 7. Replace cover page tokens with real user data ────────────────
+    const projectName = formData.title || formData.projectName || 'Untitled Project';
+    const clientName = formData.clientName || formData.client_name || 'Confidential Client';
+    const dateStr = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    });
 
-    console.log(`\n╔══════════════════════════════════════════╗`);
-    console.log(`║  ✅ ASSEMBLY COMPLETE                    ║`);
-    console.log(`║  File  : ${outputFile.substring(0, 32).padEnd(32)} ║`);
-    console.log(`║  Slides: ${String(slideCount).padEnd(32)} ║`);
-    console.log(`╚══════════════════════════════════════════╝\n`);
+    await replaceCoverPageTokens(outputPath, {
+        '{{PROJECT_NAME}}': projectName,
+        '{{CLIENT_NAME}}': clientName,
+        '{{DATE}}': dateStr,
+        '{{YEAR}}': new Date().getFullYear().toString(),
+        '{{CITY}}': (uniquePlots[0] && (uniquePlots[0].city || uniquePlots[0].City)) || '',
+        '{{ASSET_TYPE}}': (uniquePlots[0] && (uniquePlots[0].assetType || uniquePlots[0]['Asset Type'])) || '',
+    });
+
+    // ── 8. Done ─────────────────────────────────────────────────────────
+    const fileSize = fs.statSync(outputPath).size;
+
+    console.log('\n══════════════════════════════════════════');
+    console.log(`  ✅ ASSEMBLY COMPLETE`);
+    console.log(`  File  : ${outputFile}`);
+    console.log(`  Slides: ${totalSlides}`);
+    console.log(`  Size  : ${(fileSize / 1024).toFixed(1)} KB`);
+    console.log('══════════════════════════════════════════\n');
 
     return {
         fileName: outputFile,
         filePath: outputPath,
-        fileSize: fs.statSync(outputPath).size,
-        slideCount,
+        fileSize,
+        slideCount: totalSlides,
     };
-};
+}
 
-// ──────────────────────────────────────────────────────────────────────────────
-//  Enhanced Placeholder Replacer
-//  Supports: {{PLACEHOLDER}}, {{ Placeholder }}, {{placeholder}}
-// ──────────────────────────────────────────────────────────────────────────────
-const createEnhancedReplacer = (dataContext) => {
-    return (xml) => {
-        if (typeof xml !== 'string') return xml;
-        if (!dataContext) return xml;
-
-        let out = xml;
-        for (const [key, rawVal] of Object.entries(dataContext)) {
-            const val = safeText(rawVal);
-            const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`{{\\s*${safeKey}\\s*}}`, 'gi');
-            out = out.replace(regex, val);
-        }
-        return out;
-    };
-};
-
-// ── Backward compatibility aliases ────────────────────────────────────────────
+// ── Backward compatibility aliases ──────────────────────────────────────────
 export const generatePresentation = assemblePresentation;
 export const generatePresentationFromTemplate = assemblePresentation;
 

@@ -10,15 +10,10 @@ const test = async () => {
     const type = await PresentationType.findOne({ name: 'Feasibility Study' });
     if (!type) throw new Error('No Feasibility Study type found!');
 
-    console.log(`Testing Enhanced Service with ${type.sections.length} sections...`);
-
     const formData = {
-        title: 'ENHANCED TEST',
+        title: 'TEST_CLEAN_MERGE',
+        projectName: 'Test Project',
         clientName: 'Test Client',
-        City: 'Dubai',
-        'Asset Type': 'Residential',
-        Category: 'Apartments',
-        Specifications: 'Luxury',
     };
 
     const plots = [
@@ -26,7 +21,11 @@ const test = async () => {
     ];
 
     const result = await assemblePresentation({ presentationType: type, formData, plots, userId: '000000' });
-    console.log('✅ RESULT:', result.fileName, '| Slides:', result.slideCount);
+    console.log('\n═══════════════════════════════════════');
+    console.log(`  FILE : ${result.fileName}`);
+    console.log(`  SLIDES: ${result.slideCount}`);
+    console.log(`  SIZE  : ${(result.fileSize / 1024).toFixed(1)} KB`);
+    console.log('═══════════════════════════════════════');
 
     await mongoose.disconnect();
 };
