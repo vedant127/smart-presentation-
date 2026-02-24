@@ -2,45 +2,52 @@ import path from 'path';
 import fs from 'fs';
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  MAPPING SERVICE
+//  MAPPING SERVICE (v3)
 //
-//  Defines the 10-section structure for Feasibility Study.
-//  NO number prefixes. NO AI. Clean folder names.
+//  Defines the 11-section structure for Feasibility Study.
+//  Uses numbered folder prefixes + exact filenames.
 //
-//  Library/feasibility_study/
-//    cover_page/main.pptx                          ← fixed
-//    table_of_contents/main.pptx                   ← fixed
-//    project_background/main.pptx                  ← fixed
-//    executive_summary/main.pptx                   ← fixed
-//    site_assessment/main.pptx                     ← fixed
-//    market_overview/{plotkey}.pptx                 ← varying
-//    dev_recommendations_part1/main.pptx           ← fixed
-//    dev_recommendations_part2/{plotkey}.pptx       ← varying
-//    financial_investment_analysis/main.pptx        ← fixed
-//    disclaimer/main.pptx                          ← fixed
+//  Library/Feasibility Study/
+//    01_Cover Page/cover.pptx                                          ← fixed
+//    02_Table of Contents/toc.pptx                                     ← fixed
+//    03_Project Background/project_background.pptx                     ← fixed
+//    04_Executive Summary/executive_summary.pptx                       ← fixed
+//    05_Site Assessment/site_assessment.pptx                            ← fixed
+//    06_Market Overview/{city + assetType + category + specs}.pptx      ← varying
+//    07_Development Recommendations Part 1/devrec_part1.pptx           ← fixed
+//    08_Development Recommendations Part 2/{city + assetType + ...}.pptx ← varying
+//    09_Development Recommendations Part 3/devrec_part3.pptx           ← fixed
+//    10_Financial & Investment Analysis/financial_investment_analysis.pptx ← fixed
+//    11_Disclaimer/disclaimer.pptx                                     ← fixed
 // ══════════════════════════════════════════════════════════════════════════════
 
 const SLIDE_MAPPING = [
-    { id: 1, name: 'Cover Page', folder: 'cover_page', vary: false, filename: 'main.pptx' },
-    { id: 2, name: 'Table of Contents', folder: 'table_of_contents', vary: false, filename: 'main.pptx' },
-    { id: 3, name: 'Project Background', folder: 'project_background', vary: false, filename: 'main.pptx' },
-    { id: 4, name: 'Executive Summary', folder: 'executive_summary', vary: false, filename: 'main.pptx' },
-    { id: 5, name: 'Site Assessment', folder: 'site_assessment', vary: false, filename: 'main.pptx' },
-    { id: 6, name: 'Market Overview', folder: 'market_overview', vary: true },
-    { id: 7, name: 'Dev Recommendations Part 1', folder: 'dev_recommendations_part1', vary: false, filename: 'main.pptx' },
-    { id: 8, name: 'Dev Recommendations Part 2', folder: 'dev_recommendations_part2', vary: true },
-    { id: 9, name: 'Financial & Investment Analysis', folder: 'financial_investment_analysis', vary: false, filename: 'main.pptx' },
-    { id: 10, name: 'Disclaimer', folder: 'disclaimer', vary: false, filename: 'main.pptx' },
+    { id: 1, name: 'Cover Page', folder: '01_Cover Page', vary: false, filename: 'cover.pptx' },
+    { id: 2, name: 'Table of Contents', folder: '02_Table of Contents', vary: false, filename: 'toc.pptx' },
+    { id: 3, name: 'Project Background', folder: '03_Project Background', vary: false, filename: 'project_background.pptx' },
+    { id: 4, name: 'Executive Summary', folder: '04_Executive Summary', vary: false, filename: 'executive_summary.pptx' },
+    { id: 5, name: 'Site Assessment', folder: '05_Site Assessment', vary: false, filename: 'site_assessment.pptx' },
+    { id: 6, name: 'Market Overview', folder: '06_Market Overview', vary: true },
+    { id: 7, name: 'Dev Recommendations Part 1', folder: '07_Development Recommendations Part 1', vary: false, filename: 'devrec_part1.pptx' },
+    { id: 8, name: 'Dev Recommendations Part 2', folder: '08_Development Recommendations Part 2', vary: true },
+    { id: 9, name: 'Dev Recommendations Part 3', folder: '09_Development Recommendations Part 3', vary: false, filename: 'devrec_part3.pptx' },
+    { id: 10, name: 'Financial & Investment Analysis', folder: '10_Financial & Investment Analysis', vary: false, filename: 'financial_investment_analysis.pptx' },
+    { id: 11, name: 'Disclaimer', folder: '11_Disclaimer', vary: false, filename: 'disclaimer.pptx' },
 ];
 
 function getLibraryRoot() {
     const cwd = process.cwd();
-    let root = path.join(cwd, 'Library', 'feasibility_study');
+    let root = path.join(cwd, 'Library', 'Feasibility Study');
+    if (fs.existsSync(root)) return root;
+    root = path.join(cwd, '..', 'Library', 'Feasibility Study');
+    if (fs.existsSync(root)) return root;
+    // Fallback to old structure
+    root = path.join(cwd, 'Library', 'feasibility_study');
     if (!fs.existsSync(root)) root = path.join(cwd, '..', 'Library', 'feasibility_study');
     return root;
 }
 
-// Plot key: converts plot data to filename
+// Plot key: "city + assetType + category + specs" all lowercase
 function makePlotKey(plot) {
     return [
         plot.city || plot.City || '',
@@ -48,10 +55,9 @@ function makePlotKey(plot) {
         plot.category || plot.Category || '',
         plot.specs || plot.specifications || plot.Specifications || '',
     ]
-        .join('_')
-        .toLowerCase()
-        .replace(/\s+/g, '_')
-        .replace(/[^a-z0-9_]/g, '');
+        .map(s => s.trim())
+        .join(' + ')
+        .toLowerCase();
 }
 
 export const resolveSlideComponents = (slideId, plotData = {}) => {

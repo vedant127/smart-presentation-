@@ -7,9 +7,10 @@ import JSZip from 'jszip';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  PRESENTATION SERVICE (New) — Used by projectController.js
-//  Same logic as presentationServiceEnhanced.js
+//  Same logic as presentationServiceEnhanced.js (v3)
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Filename format: "city + assetType + category + specs" all lowercase
 function makePlotKey(plot) {
     return [
         plot.city || plot.City || '',
@@ -17,10 +18,9 @@ function makePlotKey(plot) {
         plot.category || plot.Category || '',
         plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
     ]
-        .join('_')
-        .toLowerCase()
-        .replace(/\s+/g, '_')
-        .replace(/[^a-z0-9_]/g, '');
+        .map(s => s.trim())
+        .join(' + ')
+        .toLowerCase();
 }
 
 function getUniquePlots(plots) {
@@ -42,11 +42,15 @@ function countSlides(filePath) {
 
 function getLibraryPath() {
     const cwd = process.cwd();
-    let lib = path.join(cwd, 'Library', 'feasibility_study');
+    let lib = path.join(cwd, 'Library', 'Feasibility Study');
+    if (fs.existsSync(lib)) return lib;
+    lib = path.join(cwd, '..', 'Library', 'Feasibility Study');
+    if (fs.existsSync(lib)) return lib;
+    lib = path.join(cwd, 'Library', 'feasibility_study');
     if (fs.existsSync(lib)) return lib;
     lib = path.join(cwd, '..', 'Library', 'feasibility_study');
     if (fs.existsSync(lib)) return lib;
-    throw new Error('Library/feasibility_study/ folder not found!');
+    throw new Error('Library/Feasibility Study/ folder not found!');
 }
 
 function getRootTemplate() {
@@ -59,7 +63,7 @@ function getRootTemplate() {
     for (const p of candidates) {
         if (fs.existsSync(p)) return p;
     }
-    const cover = path.join(getLibraryPath(), 'cover_page', 'main.pptx');
+    const cover = path.join(getLibraryPath(), '01_Cover Page', 'cover.pptx');
     if (fs.existsSync(cover)) return cover;
     throw new Error('RootTemplate.pptx not found!');
 }
@@ -95,6 +99,8 @@ async function replaceCoverPageTokens(pptxPath, replacements) {
                 while ((m = textRegex.exec(paragraph)) !== null) textParts.push(m[1]);
                 const fullText = textParts.join('');
                 if (fullText.includes(token)) {
+                    modified = true;
+                    totalReplacements++;
                     const replacedText = fullText.split(token).join(value);
                     let firstRun = true;
                     return paragraph.replace(/<a:r\b[^>]*>[\s\S]*?<\/a:r>/g, (run) => {
@@ -121,10 +127,11 @@ async function replaceCoverPageTokens(pptxPath, replacements) {
 
 export async function assemblePresentation({ presentationType, formData = {}, plots = [], userId }) {
     console.log('\n══════════════════════════════════════════');
-    console.log('  ASSEMBLY START (New Service)');
+    console.log('  ASSEMBLY START (New Service v3)');
     console.log('══════════════════════════════════════════');
 
     const LIBRARY = getLibraryPath();
+    console.log(`   Library: ${LIBRARY}`);
 
     const rawPlots = (plots && plots.length > 0)
         ? plots.map(p => p.criteria || p.data || p)
@@ -133,37 +140,56 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     console.log(`   Plots: ${rawPlots.length} total → ${uniquePlots.length} unique`);
 
     const files = [];
-    files.push({ path: path.join(LIBRARY, 'cover_page', 'main.pptx'), label: 'Cover Page' });
-    files.push({ path: path.join(LIBRARY, 'table_of_contents', 'main.pptx'), label: 'Table of Contents' });
-    files.push({ path: path.join(LIBRARY, 'project_background', 'main.pptx'), label: 'Project Background' });
-    files.push({ path: path.join(LIBRARY, 'executive_summary', 'main.pptx'), label: 'Executive Summary' });
-    files.push({ path: path.join(LIBRARY, 'site_assessment', 'main.pptx'), label: 'Site Assessment' });
 
-    for (const plot of uniquePlots) {
-        const key = makePlotKey(plot);
-        files.push({ path: path.join(LIBRARY, 'market_overview', `${key}.pptx`), label: `Market Overview [${key}]` });
-    }
-
-    files.push({ path: path.join(LIBRARY, 'dev_recommendations_part1', 'main.pptx'), label: 'Dev Recs Part 1' });
-
-    for (const plot of uniquePlots) {
-        const key = makePlotKey(plot);
-        files.push({ path: path.join(LIBRARY, 'dev_recommendations_part2', `${key}.pptx`), label: `Dev Recs Part 2 [${key}]` });
-    }
-
-    files.push({ path: path.join(LIBRARY, 'financial_investment_analysis', 'main.pptx'), label: 'Financial Analysis' });
-    files.push({ path: path.join(LIBRARY, 'disclaimer', 'main.pptx'), label: 'Disclaimer' });
-
-    const validFiles = files.filter(f => {
-        if (fs.existsSync(f.path)) {
-            console.log(`     ✅ ${f.label}`);
-            return true;
+    function addFixed(folder, filename, label) {
+        const p = path.join(LIBRARY, folder, filename);
+        if (fs.existsSync(p)) {
+            files.push({ path: p, label });
+            console.log(`     ✅ ${label}`);
+        } else {
+            console.warn(`     ❌ MISSING: ${label} → ${p}`);
         }
-        console.warn(`     ⚠️  SKIP: ${f.label}`);
-        return false;
-    });
+    }
 
-    if (validFiles.length === 0) throw new Error('No Library files found!');
+    function addVarying(folder, plot, label) {
+        const key = makePlotKey(plot);
+        const p = path.join(LIBRARY, folder, `${key}.pptx`);
+        if (fs.existsSync(p)) {
+            files.push({ path: p, label: `${label} [${key}]` });
+            console.log(`     ✅ ${label} [${key}]`);
+        } else {
+            console.warn(`     ❌ MISSING: ${label} → ${p} ← check filename`);
+        }
+    }
+
+    // FIXED SECTIONS
+    addFixed('01_Cover Page', 'cover.pptx', 'Cover Page');
+    addFixed('02_Table of Contents', 'toc.pptx', 'Table of Contents');
+    addFixed('03_Project Background', 'project_background.pptx', 'Project Background');
+    addFixed('04_Executive Summary', 'executive_summary.pptx', 'Executive Summary');
+    addFixed('05_Site Assessment', 'site_assessment.pptx', 'Site Assessment');
+
+    // VARYING — Market Overview
+    for (const plot of uniquePlots) {
+        addVarying('06_Market Overview', plot, 'Market Overview');
+    }
+
+    // FIXED MIDDLE
+    addFixed('07_Development Recommendations Part 1', 'devrec_part1.pptx', 'Dev Recs Part 1');
+
+    // VARYING — Dev Recommendations Part 2
+    for (const plot of uniquePlots) {
+        addVarying('08_Development Recommendations Part 2', plot, 'Dev Recs Part 2');
+    }
+
+    // FIXED END
+    addFixed('09_Development Recommendations Part 3', 'devrec_part3.pptx', 'Dev Recs Part 3');
+    addFixed('10_Financial & Investment Analysis', 'financial_investment_analysis.pptx', 'Financial Analysis');
+    addFixed('11_Disclaimer', 'disclaimer.pptx', 'Disclaimer');
+
+    if (files.length === 0) throw new Error('No Library files found!');
+
+    console.log(`\n   Total files to merge: ${files.length}`);
 
     const baseDir = process.cwd();
     const outputDir = path.join(baseDir, 'generated');
@@ -178,7 +204,7 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     automizer.loadRoot(getRootTemplate());
 
     let totalSlides = 0;
-    for (const f of validFiles) {
+    for (const f of files) {
         const slides = countSlides(f.path);
         const loadKey = `f_${totalSlides}_${uuidv4().substring(0, 5)}`;
         automizer.load(f.path, loadKey);

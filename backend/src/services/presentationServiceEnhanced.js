@@ -6,17 +6,32 @@ import PizZip from 'pizzip';
 import JSZip from 'jszip';
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PRESENTATION ASSEMBLY SERVICE
+//  PRESENTATION ASSEMBLY SERVICE (v3)
 //
 //  Pure file-merge from Library folder.
 //  NO AI content. NO placeholders. NO programmatic slides.
 //  Every slide in the output comes from a real PPTX file in the Library.
+//
+//  Library Structure:
+//    Library/Feasibility Study/
+//      01_Cover Page/cover.pptx
+//      02_Table of Contents/toc.pptx
+//      03_Project Background/project_background.pptx
+//      04_Executive Summary/executive_summary.pptx
+//      05_Site Assessment/site_assessment.pptx
+//      06_Market Overview/{city + assetType + category + specs}.pptx
+//      07_Development Recommendations Part 1/devrec_part1.pptx
+//      08_Development Recommendations Part 2/{city + assetType + category + specs}.pptx
+//      09_Development Recommendations Part 3/devrec_part3.pptx
+//      10_Financial & Investment Analysis/financial_investment_analysis.pptx
+//      11_Disclaimer/disclaimer.pptx
 //
 //  After merging, cover page tokens {{PROJECT_NAME}}, {{CLIENT_NAME}},
 //  {{DATE}} are replaced with actual user values.
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ─── Plot Key ────────────────────────────────────────────────────────────────
+// Filename format: "city + assetType + category + specs" all lowercase
 function makePlotKey(plot) {
     return [
         plot.city || plot.City || '',
@@ -24,10 +39,9 @@ function makePlotKey(plot) {
         plot.category || plot.Category || '',
         plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
     ]
-        .join('_')
-        .toLowerCase()
-        .replace(/\s+/g, '_')
-        .replace(/[^a-z0-9_]/g, '');
+        .map(s => s.trim())
+        .join(' + ')
+        .toLowerCase();
 }
 
 // ─── Deduplication ───────────────────────────────────────────────────────────
@@ -57,11 +71,17 @@ function countSlides(filePath) {
 // ─── Locate Library folder ──────────────────────────────────────────────────
 function getLibraryPath() {
     const cwd = process.cwd();
-    let lib = path.join(cwd, 'Library', 'feasibility_study');
+    // Try new structure first: "Feasibility Study" (with spaces)
+    let lib = path.join(cwd, 'Library', 'Feasibility Study');
+    if (fs.existsSync(lib)) return lib;
+    lib = path.join(cwd, '..', 'Library', 'Feasibility Study');
+    if (fs.existsSync(lib)) return lib;
+    // Fallback to old structure
+    lib = path.join(cwd, 'Library', 'feasibility_study');
     if (fs.existsSync(lib)) return lib;
     lib = path.join(cwd, '..', 'Library', 'feasibility_study');
     if (fs.existsSync(lib)) return lib;
-    throw new Error('Library/feasibility_study/ folder not found!');
+    throw new Error('Library/Feasibility Study/ folder not found!');
 }
 
 // ─── Locate Root Template ───────────────────────────────────────────────────
@@ -76,8 +96,9 @@ function getRootTemplate() {
     for (const p of candidates) {
         if (fs.existsSync(p)) return p;
     }
+    // Fallback: use the cover page as template
     const lib = getLibraryPath();
-    const cover = path.join(lib, 'cover_page', 'main.pptx');
+    const cover = path.join(lib, '01_Cover Page', 'cover.pptx');
     if (fs.existsSync(cover)) return cover;
     throw new Error('RootTemplate.pptx not found!');
 }
@@ -123,10 +144,8 @@ async function replaceCoverPageTokens(pptxPath, replacements) {
         // Strategy: For each <a:p> paragraph, extract all <a:t> text, concatenate,
         // check for tokens, and if found, consolidate into a single <a:t> with replacement.
         for (const [token, value] of Object.entries(replacements)) {
-            // Match each paragraph that might contain split tokens
             const paragraphRegex = /<a:p\b[^>]*>[\s\S]*?<\/a:p>/g;
             xml = xml.replace(paragraphRegex, (paragraph) => {
-                // Extract all text from <a:t> tags in this paragraph
                 const textParts = [];
                 const textRegex = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
                 let match;
@@ -135,27 +154,24 @@ async function replaceCoverPageTokens(pptxPath, replacements) {
                 }
                 const fullText = textParts.join('');
 
-                // If the concatenated text contains our token, replace it
                 if (fullText.includes(token)) {
+                    modified = true;
+                    totalReplacements++;
                     const replacedText = fullText.split(token).join(value);
-                    // Replace all <a:t>...</a:t> instances with a single one containing the replaced text
-                    // Keep the first run's formatting, remove others
                     let firstRun = true;
                     return paragraph.replace(/<a:r\b[^>]*>[\s\S]*?<\/a:r>/g, (run) => {
                         if (firstRun) {
                             firstRun = false;
-                            // Replace the text content in the first run
                             return run.replace(/<a:t[^>]*>[\s\S]*?<\/a:t>/, `<a:t>${replacedText}</a:t>`);
                         }
-                        // Check if this run contains part of the token — if so, remove it
                         const runText = run.replace(/<[^>]*>/g, '').trim();
                         if (token.includes(runText) || runText.includes('{') || runText.includes('}')) {
-                            return ''; // Remove this split run
+                            return '';
                         }
-                        return run; // Keep non-token runs
+                        return run;
                     });
                 }
-                return paragraph; // No token found, keep as-is
+                return paragraph;
             });
         }
 
@@ -179,7 +195,7 @@ async function replaceCoverPageTokens(pptxPath, replacements) {
 // ══════════════════════════════════════════════════════════════════════════════
 export async function assemblePresentation({ presentationType, formData = {}, plots = [], userId }) {
     console.log('\n══════════════════════════════════════════');
-    console.log('  ASSEMBLY START');
+    console.log('  ASSEMBLY START (v3 — New Library Structure)');
     console.log('══════════════════════════════════════════');
 
     const LIBRARY = getLibraryPath();
@@ -195,64 +211,68 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     console.log(`   Plots: ${rawPlots.length} total → ${uniquePlots.length} unique\n`);
 
     // ── 3. Build ordered file list from Library ─────────────────────────
+    //    Uses the NEW numbered folder structure with exact filenames
     const files = [];
 
-    // FIXED START
-    files.push({ path: path.join(LIBRARY, 'cover_page', 'main.pptx'), label: 'Cover Page' });
-    files.push({ path: path.join(LIBRARY, 'table_of_contents', 'main.pptx'), label: 'Table of Contents' });
-    files.push({ path: path.join(LIBRARY, 'project_background', 'main.pptx'), label: 'Project Background' });
-    files.push({ path: path.join(LIBRARY, 'executive_summary', 'main.pptx'), label: 'Executive Summary' });
-    files.push({ path: path.join(LIBRARY, 'site_assessment', 'main.pptx'), label: 'Site Assessment' });
-
-    // VARYING — Market Overview
-    for (const plot of uniquePlots) {
-        const key = makePlotKey(plot);
-        files.push({
-            path: path.join(LIBRARY, 'market_overview', `${key}.pptx`),
-            label: `Market Overview [${key}]`,
-        });
-    }
-
-    // FIXED MIDDLE
-    files.push({ path: path.join(LIBRARY, 'dev_recommendations_part1', 'main.pptx'), label: 'Dev Recommendations Part 1' });
-
-    // VARYING — Dev Recommendations Part 2
-    for (const plot of uniquePlots) {
-        const key = makePlotKey(plot);
-        files.push({
-            path: path.join(LIBRARY, 'dev_recommendations_part2', `${key}.pptx`),
-            label: `Dev Recommendations Part 2 [${key}]`,
-        });
-    }
-
-    // FIXED END
-    files.push({ path: path.join(LIBRARY, 'financial_investment_analysis', 'main.pptx'), label: 'Financial & Investment Analysis' });
-    files.push({ path: path.join(LIBRARY, 'disclaimer', 'main.pptx'), label: 'Disclaimer' });
-
-    // ── 4. Filter to existing files ─────────────────────────────────────
-    console.log('   File list:');
-    const validFiles = [];
-    for (const f of files) {
-        if (fs.existsSync(f.path)) {
-            const slides = countSlides(f.path);
-            console.log(`     ✅ ${f.label} (${slides} slide${slides !== 1 ? 's' : ''})`);
-            validFiles.push(f);
+    function addFixed(folder, filename, label) {
+        const p = path.join(LIBRARY, folder, filename);
+        if (fs.existsSync(p)) {
+            files.push({ path: p, label });
+            console.log(`     ✅ FOUND: ${label} → ${path.relative(LIBRARY, p)}`);
         } else {
-            console.warn(`     ⚠️  SKIP: ${f.label} — file not found: ${path.basename(f.path)}`);
+            console.warn(`     ❌ MISSING: ${label} → ${p}`);
         }
     }
 
-    if (validFiles.length === 0) {
-        throw new Error('No Library PPTX files found! Check Library/feasibility_study/ folder.');
+    function addVarying(folder, plot, label) {
+        const key = makePlotKey(plot);
+        const p = path.join(LIBRARY, folder, `${key}.pptx`);
+        if (fs.existsSync(p)) {
+            files.push({ path: p, label: `${label} [${key}]` });
+            console.log(`     ✅ FOUND: ${label} [${key}] → ${path.relative(LIBRARY, p)}`);
+        } else {
+            console.warn(`     ❌ MISSING: ${label} [${key}] → ${p} ← check filename matches exactly`);
+        }
     }
 
-    // ── 5. Merge all PPTX files ─────────────────────────────────────────
+    // FIXED SECTIONS — exact folder name + exact filename
+    addFixed('01_Cover Page', 'cover.pptx', 'Cover Page');
+    addFixed('02_Table of Contents', 'toc.pptx', 'Table of Contents');
+    addFixed('03_Project Background', 'project_background.pptx', 'Project Background');
+    addFixed('04_Executive Summary', 'executive_summary.pptx', 'Executive Summary');
+    addFixed('05_Site Assessment', 'site_assessment.pptx', 'Site Assessment');
+
+    // VARYING — Market Overview (one per unique plot)
+    for (const plot of uniquePlots) {
+        addVarying('06_Market Overview', plot, 'Market Overview');
+    }
+
+    // FIXED MIDDLE
+    addFixed('07_Development Recommendations Part 1', 'devrec_part1.pptx', 'Dev Recommendations Part 1');
+
+    // VARYING — Dev Recommendations Part 2 (one per unique plot)
+    for (const plot of uniquePlots) {
+        addVarying('08_Development Recommendations Part 2', plot, 'Dev Recommendations Part 2');
+    }
+
+    // FIXED END
+    addFixed('09_Development Recommendations Part 3', 'devrec_part3.pptx', 'Dev Recommendations Part 3');
+    addFixed('10_Financial & Investment Analysis', 'financial_investment_analysis.pptx', 'Financial & Investment Analysis');
+    addFixed('11_Disclaimer', 'disclaimer.pptx', 'Disclaimer');
+
+    // ── 4. Filter to valid files only ───────────────────────────────────
+    console.log(`\n   Total files to merge: ${files.length}`);
+    if (files.length === 0) {
+        throw new Error('No Library files found! Check Library/Feasibility Study/ folder.');
+    }
+
+    // ── 5. Merge all PPTX files using pptx-automizer ────────────────────
     const baseDir = process.cwd();
     const outputDir = path.join(baseDir, 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     const rootTemplate = getRootTemplate();
-    console.log(`\n   Root Template: ${rootTemplate}`);
+    console.log(`   Root Template: ${rootTemplate}`);
 
     const automizer = new Automizer({
         templateDir: baseDir,
@@ -263,7 +283,7 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     automizer.loadRoot(rootTemplate);
 
     let totalSlides = 0;
-    for (const f of validFiles) {
+    for (const f of files) {
         const slides = countSlides(f.path);
         const loadKey = `file_${totalSlides}_${uuidv4().substring(0, 5)}`;
         automizer.load(f.path, loadKey);
@@ -271,6 +291,7 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
             automizer.addSlide(loadKey, i);
             totalSlides++;
         }
+        console.log(`     📄 ${f.label} → ${slides} slide(s)`);
     }
 
     // ── 6. Write output file ────────────────────────────────────────────
