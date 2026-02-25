@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "nodemon": "^3.1.14"
+    "jszip": "^3.10.1",
+    "nodemon": "^3.1.14",
+    "pizzip": "^3.2.0"
   }
 }

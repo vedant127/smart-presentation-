@@ -1,37 +1,18 @@
 import path from 'path';
 import fs from 'fs';
-import { Automizer } from 'pptx-automizer';
 import { v4 as uuidv4 } from 'uuid';
-import PizZip from 'pizzip';
 import JSZip from 'jszip';
+import PizZip from 'pizzip';
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PRESENTATION ASSEMBLY SERVICE (v3)
+//  PRESENTATION ASSEMBLY SERVICE (v5 — Bulletproof JSZip merge)
 //
 //  Pure file-merge from Library folder.
-//  NO AI content. NO placeholders. NO programmatic slides.
-//  Every slide in the output comes from a real PPTX file in the Library.
-//
-//  Library Structure:
-//    Library/Feasibility Study/
-//      01_Cover Page/cover.pptx
-//      02_Table of Contents/toc.pptx
-//      03_Project Background/project_background.pptx
-//      04_Executive Summary/executive_summary.pptx
-//      05_Site Assessment/site_assessment.pptx
-//      06_Market Overview/{city + assetType + category + specs}.pptx
-//      07_Development Recommendations Part 1/devrec_part1.pptx
-//      08_Development Recommendations Part 2/{city + assetType + category + specs}.pptx
-//      09_Development Recommendations Part 3/devrec_part3.pptx
-//      10_Financial & Investment Analysis/financial_investment_analysis.pptx
-//      11_Disclaimer/disclaimer.pptx
-//
-//  After merging, cover page tokens {{PROJECT_NAME}}, {{CLIENT_NAME}},
-//  {{DATE}} are replaced with actual user values.
+//  NO AI content. NO pptx-automizer. NO RootTemplate needed.
+//  Every slide comes from a real PPTX in the Library.
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ─── Plot Key ────────────────────────────────────────────────────────────────
-// Filename format: "city + assetType + category + specs" all lowercase
 function makePlotKey(plot) {
     return [
         plot.city || plot.City || '',
@@ -59,7 +40,31 @@ function getUniquePlots(plots) {
     return Array.from(seen.values());
 }
 
+// ─── Locate Library folder ──────────────────────────────────────────────────
+function getLibraryPath() {
+    const cwd = process.cwd();
+    const __dirname = path.dirname(new URL(import.meta.url).pathname);
+    const candidates = [
+        path.join(cwd, 'Library', 'Feasibility Study'),
+        path.join(cwd, '..', 'Library', 'Feasibility Study'),
+        path.join(cwd, 'src', 'Library', 'Feasibility Study'),
+        path.join(__dirname, '..', 'Library', 'Feasibility Study'),
+        path.join(__dirname, '..', '..', 'Library', 'Feasibility Study'),
+        path.join(cwd, 'Library', 'feasibility_study'),
+        path.join(cwd, '..', 'Library', 'feasibility_study'),
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return p;
+    }
+    throw new Error(`Library folder not found! Tried:\n${candidates.join('\n')}`);
+}
+
 // ─── Count slides in a PPTX ─────────────────────────────────────────────────
+function countSlidesInZip(zip) {
+    return Object.keys(zip.files)
+        .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
+}
+
 function countSlides(filePath) {
     try {
         const zip = new PizZip(fs.readFileSync(filePath));
@@ -68,106 +73,222 @@ function countSlides(filePath) {
     } catch { return 0; }
 }
 
-// ─── Locate Library folder ──────────────────────────────────────────────────
-function getLibraryPath() {
-    const cwd = process.cwd();
-    // Try new structure first: "Feasibility Study" (with spaces)
-    let lib = path.join(cwd, 'Library', 'Feasibility Study');
-    if (fs.existsSync(lib)) return lib;
-    lib = path.join(cwd, '..', 'Library', 'Feasibility Study');
-    if (fs.existsSync(lib)) return lib;
-    // Fallback to old structure
-    lib = path.join(cwd, 'Library', 'feasibility_study');
-    if (fs.existsSync(lib)) return lib;
-    lib = path.join(cwd, '..', 'Library', 'feasibility_study');
-    if (fs.existsSync(lib)) return lib;
-    throw new Error('Library/Feasibility Study/ folder not found!');
+// ─── Filter out fake/placeholder slides ──────────────────────────────────────
+// Slides containing these texts are fake AI-generated content — skip them
+const FAKE_SLIDE_PATTERNS = [
+    '[Location Map Placeholder]',
+    '[Location Map Reference]',
+    '[Process Flow Diagram',
+    '[Cash Flow Column Chart Placeholder]',
+    'Sensitivity Matrix (Price vs. Cost)',
+    'The project yields a Total Profit of $85M',
+    'Unlevered IRR: 14%',
+    'Market Outlook & Opportunities',
+    'Pricing Rationale',
+    'Financial Results Summary',
+    'Project IRR',
+    'Assumptions - Part',
+    'METHODOLOGY',
+    'CASH FLOW STATEMENTS',
+    'RETURN ANALYSIS',
+    'SENSITIVITY ANALYSIS',
+    'FINANCIAL RESULTS SUMMARY',
+];
+
+function isFakeSlide(slideXml) {
+    const decoded = slideXml.replace(/&#xD;/g, '').replace(/<[^>]*>/g, ' ');
+    return FAKE_SLIDE_PATTERNS.some(pattern => decoded.includes(pattern));
 }
 
-// ─── Locate Root Template ───────────────────────────────────────────────────
-function getRootTemplate() {
-    const cwd = process.cwd();
-    const candidates = [
-        path.join(cwd, 'templates', 'RootTemplate.pptx'),
-        path.join(cwd, '..', 'templates', 'RootTemplate.pptx'),
-        path.join(cwd, 'Library', 'RootTemplate.pptx'),
-        path.join(cwd, '..', 'Library', 'RootTemplate.pptx'),
-    ];
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return p;
+// ══════════════════════════════════════════════════════════════════════════════
+//  CORE MERGE — Bulletproof version with FAKE SLIDE FILTERING
+//
+//  Strategy: Collect ALL slides from ALL files, filter out fake/placeholder
+//  slides, then build a clean output PPTX with only real slides.
+// ══════════════════════════════════════════════════════════════════════════════
+async function mergePptxFiles(fileList) {
+    console.log(`\n   [Merge] Starting merge of ${fileList.length} files...`);
+
+    if (fileList.length === 0) throw new Error('No files to merge!');
+
+    // Collect all real slides from all files
+    const allSlides = []; // { xml, rels, mediaFiles, sourceZip }
+
+    for (const filePath of fileList) {
+        const buffer = fs.readFileSync(filePath);
+        const zip = await JSZip.loadAsync(buffer);
+        const fileName = path.basename(filePath);
+
+        // Get slides sorted by number
+        const slidePaths = Object.keys(zip.files)
+            .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
+            .sort((a, b) => {
+                const na = parseInt(a.match(/(\d+)/)[1]);
+                const nb = parseInt(b.match(/(\d+)/)[1]);
+                return na - nb;
+            });
+
+        let kept = 0;
+        let skipped = 0;
+
+        for (const slidePath of slidePaths) {
+            const slideXml = await zip.file(slidePath).async('string');
+
+            // ── SKIP FAKE SLIDES ──────────────────────────────────────
+            if (isFakeSlide(slideXml)) {
+                skipped++;
+                console.log(`     ⏭️  SKIPPED fake slide: ${fileName} → ${slidePath}`);
+                continue;
+            }
+
+            // Get slide relationships
+            const relPath = slidePath.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+            const relXml = zip.file(relPath) ? await zip.file(relPath).async('string') : null;
+
+            // Get media files referenced by this slide
+            const mediaFiles = {};
+            if (relXml) {
+                const mediaRefs = [...relXml.matchAll(/Target="\.\.\/(media\/[^"]+)"/g)];
+                for (const ref of mediaRefs) {
+                    const mediaName = ref[1];
+                    const mediaPath = `ppt/media/${mediaName}`;
+                    if (zip.file(mediaPath)) {
+                        mediaFiles[mediaName] = await zip.file(mediaPath).async('nodebuffer');
+                    }
+                }
+            }
+
+            allSlides.push({ slideXml, relXml, mediaFiles, fileName });
+            kept++;
+        }
+
+        console.log(`     📄 ${fileName} → kept ${kept}, skipped ${skipped}`);
     }
-    // Fallback: use the cover page as template
-    const lib = getLibraryPath();
-    const cover = path.join(lib, '01_Cover Page', 'cover.pptx');
-    if (fs.existsSync(cover)) return cover;
-    throw new Error('RootTemplate.pptx not found!');
+
+    if (allSlides.length === 0) throw new Error('No real slides found after filtering!');
+
+    // ── Build output PPTX from first file as base ─────────────────────
+    const baseBuffer = fs.readFileSync(fileList[0]);
+    const outputZip = await JSZip.loadAsync(baseBuffer);
+
+    // Remove all existing slides from base
+    const existingSlides = Object.keys(outputZip.files)
+        .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+    for (const s of existingSlides) {
+        outputZip.remove(s);
+        const rel = s.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+        if (outputZip.file(rel)) outputZip.remove(rel);
+    }
+
+    // Add all real slides
+    for (let i = 0; i < allSlides.length; i++) {
+        const { slideXml, relXml, mediaFiles } = allSlides[i];
+        const slideNum = i + 1;
+
+        outputZip.file(`ppt/slides/slide${slideNum}.xml`, slideXml);
+
+        if (relXml) {
+            outputZip.file(`ppt/slides/_rels/slide${slideNum}.xml.rels`, relXml);
+        }
+
+        // Add media files
+        for (const [mediaName, mediaBuffer] of Object.entries(mediaFiles)) {
+            const newMediaPath = `ppt/media/${mediaName}`;
+            if (!outputZip.file(newMediaPath)) {
+                outputZip.file(newMediaPath, mediaBuffer);
+            }
+        }
+    }
+
+    // Update [Content_Types].xml
+    let contentTypes = await outputZip.file('[Content_Types].xml').async('string');
+    // Remove old slide entries
+    contentTypes = contentTypes.replace(
+        /<Override PartName="\/ppt\/slides\/slide\d+\.xml"[^/]*\/>/g, ''
+    );
+    // Add new slide entries
+    let newEntries = '';
+    for (let i = 1; i <= allSlides.length; i++) {
+        newEntries += `<Override PartName="/ppt/slides/slide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
+    }
+    contentTypes = contentTypes.replace('</Types>', `${newEntries}</Types>`);
+    outputZip.file('[Content_Types].xml', contentTypes);
+
+    // Update ppt/presentation.xml sldIdLst
+    let presXml = await outputZip.file('ppt/presentation.xml').async('string');
+
+    // Find max existing id
+    let maxId = 255;
+    const idMatches = [...presXml.matchAll(/id="(\d+)"/g)];
+    for (const m of idMatches) maxId = Math.max(maxId, parseInt(m[1]));
+
+    // Replace sldIdLst completely
+    let sldIdLst = '';
+    for (let i = 1; i <= allSlides.length; i++) {
+        maxId++;
+        sldIdLst += `<p:sldId id="${maxId}" r:id="rId_s${i}"/>`;
+    }
+    presXml = presXml.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, `<p:sldIdLst>${sldIdLst}</p:sldIdLst>`);
+    outputZip.file('ppt/presentation.xml', presXml);
+
+    const outputBuffer = await outputZip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+    });
+
+    console.log(`   [Merge] ✅ Done — ${allSlides.length} real slides merged`);
+    return outputBuffer;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  COVER PAGE TOKEN REPLACEMENT
-//
-//  After merging, opens the output PPTX and replaces template tags
-//  like {{PROJECT_NAME}}, {{CLIENT_NAME}}, {{DATE}} on ALL slides
-//  with actual user values.
-//
-//  This works by modifying the raw XML inside the PPTX (ZIP) file.
-//  PowerPoint sometimes splits text across XML runs, so we also handle
-//  the split-tag case (e.g. <a:r>{{PROJECT</a:r><a:r>_NAME}}</a:r>).
-// ══════════════════════════════════════════════════════════════════════════════
-async function replaceCoverPageTokens(pptxPath, replacements) {
-    console.log('   [TokenReplace] Replacing template tokens...');
+// ─── Token Replacement ────────────────────────────────────────────────────────
+async function replaceTokens(pptxPath, replacements) {
+    console.log('   [Tokens] Replacing tokens...');
     const buffer = fs.readFileSync(pptxPath);
     const zip = await JSZip.loadAsync(buffer);
 
-    // Get all slide XML files
-    const slideFiles = Object.keys(zip.files).filter(
-        f => /^ppt\/slides\/slide\d+\.xml$/.test(f)
-    );
+    const slideFiles = Object.keys(zip.files)
+        .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
 
-    let totalReplacements = 0;
+    let totalReplaced = 0;
 
     for (const slidePath of slideFiles) {
-        let xml = await zip.file(slidePath).async('string');
+        const slideFile = zip.file(slidePath);
+        if (!slideFile || slideFile.dir) continue;
+
+        let xml = await slideFile.async('string');
         let modified = false;
 
         for (const [token, value] of Object.entries(replacements)) {
-            // Direct replacement (token is in one XML run)
             if (xml.includes(token)) {
                 xml = xml.split(token).join(value);
                 modified = true;
-                totalReplacements++;
+                totalReplaced++;
+                console.log(`     ✅ Replaced "${token}" in ${slidePath}`);
             }
         }
 
-        // Handle PowerPoint split-tag issue:
-        // PowerPoint may split "{{PROJECT_NAME}}" across multiple <a:r> XML runs.
-        // Strategy: For each <a:p> paragraph, extract all <a:t> text, concatenate,
-        // check for tokens, and if found, consolidate into a single <a:t> with replacement.
+        // Handle split tokens across XML runs (PowerPoint splits {{TOKEN}} across <a:r> runs)
         for (const [token, value] of Object.entries(replacements)) {
             const paragraphRegex = /<a:p\b[^>]*>[\s\S]*?<\/a:p>/g;
             xml = xml.replace(paragraphRegex, (paragraph) => {
                 const textParts = [];
                 const textRegex = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
-                let match;
-                while ((match = textRegex.exec(paragraph)) !== null) {
-                    textParts.push(match[1]);
-                }
+                let m;
+                while ((m = textRegex.exec(paragraph)) !== null) textParts.push(m[1]);
                 const fullText = textParts.join('');
-
                 if (fullText.includes(token)) {
                     modified = true;
-                    totalReplacements++;
-                    const replacedText = fullText.split(token).join(value);
+                    totalReplaced++;
+                    const replaced = fullText.split(token).join(value);
                     let firstRun = true;
                     return paragraph.replace(/<a:r\b[^>]*>[\s\S]*?<\/a:r>/g, (run) => {
                         if (firstRun) {
                             firstRun = false;
-                            return run.replace(/<a:t[^>]*>[\s\S]*?<\/a:t>/, `<a:t>${replacedText}</a:t>`);
+                            return run.replace(/<a:t[^>]*>[\s\S]*?<\/a:t>/, `<a:t>${replaced}</a:t>`);
                         }
                         const runText = run.replace(/<[^>]*>/g, '').trim();
-                        if (token.includes(runText) || runText.includes('{') || runText.includes('}')) {
-                            return '';
-                        }
+                        if (token.includes(runText) || runText.includes('{') || runText.includes('}')) return '';
                         return run;
                     });
                 }
@@ -175,19 +296,12 @@ async function replaceCoverPageTokens(pptxPath, replacements) {
             });
         }
 
-        if (modified) {
-            zip.file(slidePath, xml);
-            console.log(`     ✅ ${slidePath} — tokens replaced`);
-        }
+        if (modified) zip.file(slidePath, xml);
     }
 
-    if (totalReplacements > 0) {
-        const output = await zip.generateAsync({ type: 'nodebuffer' });
-        fs.writeFileSync(pptxPath, output);
-        console.log(`   [TokenReplace] Done — ${totalReplacements} replacement(s) across ${slideFiles.length} slides`);
-    } else {
-        console.log('   [TokenReplace] No tokens found to replace');
-    }
+    const output = await zip.generateAsync({ type: 'nodebuffer' });
+    fs.writeFileSync(pptxPath, output);
+    console.log(`   [Tokens] Done — ${totalReplaced} replacement(s)`);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -195,13 +309,13 @@ async function replaceCoverPageTokens(pptxPath, replacements) {
 // ══════════════════════════════════════════════════════════════════════════════
 export async function assemblePresentation({ presentationType, formData = {}, plots = [], userId }) {
     console.log('\n══════════════════════════════════════════');
-    console.log('  ASSEMBLY START (v3 — New Library Structure)');
+    console.log('  ASSEMBLY START (v5 — Bulletproof Merge)');
     console.log('══════════════════════════════════════════');
 
     const LIBRARY = getLibraryPath();
     console.log(`   Library: ${LIBRARY}`);
 
-    // ── 1. Normalize plot data ──────────────────────────────────────────
+    // ── 1. Normalize plots ──────────────────────────────────────────────
     const rawPlots = (plots && plots.length > 0)
         ? plots.map(p => p.criteria || p.data || p)
         : [formData];
@@ -210,15 +324,14 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     const uniquePlots = getUniquePlots(rawPlots);
     console.log(`   Plots: ${rawPlots.length} total → ${uniquePlots.length} unique\n`);
 
-    // ── 3. Build ordered file list from Library ─────────────────────────
-    //    Uses the NEW numbered folder structure with exact filenames
+    // ── 3. Build ordered file list ──────────────────────────────────────
     const files = [];
 
     function addFixed(folder, filename, label) {
         const p = path.join(LIBRARY, folder, filename);
         if (fs.existsSync(p)) {
-            files.push({ path: p, label });
-            console.log(`     ✅ FOUND: ${label} → ${path.relative(LIBRARY, p)}`);
+            files.push(p);
+            console.log(`     ✅ FOUND:   ${label} → ${filename}`);
         } else {
             console.warn(`     ❌ MISSING: ${label} → ${p}`);
         }
@@ -228,119 +341,86 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
         const key = makePlotKey(plot);
         const p = path.join(LIBRARY, folder, `${key}.pptx`);
         if (fs.existsSync(p)) {
-            files.push({ path: p, label: `${label} [${key}]` });
-            console.log(`     ✅ FOUND: ${label} [${key}] → ${path.relative(LIBRARY, p)}`);
+            files.push(p);
+            console.log(`     ✅ FOUND:   ${label} [${key}]`);
         } else {
-            console.warn(`     ❌ MISSING: ${label} [${key}] → ${p} ← check filename matches exactly`);
+            console.warn(`     ❌ MISSING: ${label} [${key}] → ${p}`);
         }
     }
 
-    // FIXED SECTIONS — exact folder name + exact filename
     addFixed('01_Cover Page', 'cover.pptx', 'Cover Page');
     addFixed('02_Table of Contents', 'toc.pptx', 'Table of Contents');
     addFixed('03_Project Background', 'project_background.pptx', 'Project Background');
     addFixed('04_Executive Summary', 'executive_summary.pptx', 'Executive Summary');
     addFixed('05_Site Assessment', 'site_assessment.pptx', 'Site Assessment');
 
-    // VARYING — Market Overview (one per unique plot)
     for (const plot of uniquePlots) {
         addVarying('06_Market Overview', plot, 'Market Overview');
     }
 
-    // FIXED MIDDLE
-    addFixed('07_Development Recommendations Part 1', 'devrec_part1.pptx', 'Dev Recommendations Part 1');
+    addFixed('07_Development Recommendations Part 1', 'devrec_part1.pptx', 'Dev Recs Part 1');
 
-    // VARYING — Dev Recommendations Part 2 (one per unique plot)
     for (const plot of uniquePlots) {
-        addVarying('08_Development Recommendations Part 2', plot, 'Dev Recommendations Part 2');
+        addVarying('08_Development Recommendations Part 2', plot, 'Dev Recs Part 2');
     }
 
-    // FIXED END
-    addFixed('09_Development Recommendations Part 3', 'devrec_part3.pptx', 'Dev Recommendations Part 3');
-    addFixed('10_Financial & Investment Analysis', 'financial_investment_analysis.pptx', 'Financial & Investment Analysis');
+    for (const plot of uniquePlots) {
+        addVarying('09_Development Recommendations Part 3', plot, 'Dev Recs Part 3');
+    }
+    addFixed('10_Financial & Investment Analysis', 'financial_investment_analysis.pptx', 'Financial Analysis');
     addFixed('11_Disclaimer', 'disclaimer.pptx', 'Disclaimer');
 
-    // ── 4. Filter to valid files only ───────────────────────────────────
-    console.log(`\n   Total files to merge: ${files.length}`);
-    if (files.length === 0) {
-        throw new Error('No Library files found! Check Library/Feasibility Study/ folder.');
-    }
+    console.log(`\n   Files to merge: ${files.length}`);
+    if (files.length === 0) throw new Error('No Library files found! Check Library folder.');
 
-    // ── 5. Merge all PPTX files using pptx-automizer ────────────────────
+    // ── 4. Merge all files ──────────────────────────────────────────────
+    const mergedBuffer = await mergePptxFiles(files);
+
+    // ── 5. Write output ─────────────────────────────────────────────────
     const baseDir = process.cwd();
     const outputDir = path.join(baseDir, 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-    const rootTemplate = getRootTemplate();
-    console.log(`   Root Template: ${rootTemplate}`);
-
-    const automizer = new Automizer({
-        templateDir: baseDir,
-        outputDir,
-        removeExistingSlides: true,
-        cleanup: false,
-    });
-    automizer.loadRoot(rootTemplate);
-
-    let totalSlides = 0;
-    for (const f of files) {
-        const slides = countSlides(f.path);
-        const loadKey = `file_${totalSlides}_${uuidv4().substring(0, 5)}`;
-        automizer.load(f.path, loadKey);
-        for (let i = 1; i <= slides; i++) {
-            automizer.addSlide(loadKey, i);
-            totalSlides++;
-        }
-        console.log(`     📄 ${f.label} → ${slides} slide(s)`);
-    }
-
-    // ── 6. Write output file ────────────────────────────────────────────
-    const safeName = (formData.title || formData.projectName || 'Report')
-        .replace(/[^a-zA-Z0-9]/g, '_')
-        .substring(0, 40);
+    const safeName = (formData.title || formData.projectName || formData.projectTitle || 'Report')
+        .replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
     const outputFile = `${safeName}_${uuidv4().substring(0, 8)}.pptx`;
-
-    await automizer.write(outputFile);
     const outputPath = path.join(outputDir, outputFile);
+    fs.writeFileSync(outputPath, mergedBuffer);
 
-    // ── 7. Replace cover page tokens with real user data ────────────────
-    const projectName = formData.title || formData.projectName || 'Untitled Project';
-    const clientName = formData.clientName || formData.client_name || 'Confidential Client';
-    const dateStr = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    });
+    // ── 6. Replace tokens on cover page ────────────────────────────────
+    const projectName = formData.title || formData.projectName || formData.projectTitle || 'Untitled Project';
+    const clientName = formData.clientName || formData.client_name || 'Confidential';
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    await replaceCoverPageTokens(outputPath, {
+    await replaceTokens(outputPath, {
         '{{PROJECT_NAME}}': projectName,
         '{{CLIENT_NAME}}': clientName,
         '{{DATE}}': dateStr,
+        '{{Title}}': projectName,
+        '{{Subtitle}}': clientName,
+        '{{title}}': projectName,
+        '{{subtitle}}': clientName,
+        '{{project_name}}': projectName,
+        '{{client_name}}': clientName,
+        '{{TITLE}}': projectName,
+        '{{SUBTITLE}}': clientName,
         '{{YEAR}}': new Date().getFullYear().toString(),
-        '{{CITY}}': (uniquePlots[0] && (uniquePlots[0].city || uniquePlots[0].City)) || '',
-        '{{ASSET_TYPE}}': (uniquePlots[0] && (uniquePlots[0].assetType || uniquePlots[0]['Asset Type'])) || '',
     });
 
-    // ── 8. Done ─────────────────────────────────────────────────────────
+    // ── 7. Done ─────────────────────────────────────────────────────────
     const fileSize = fs.statSync(outputPath).size;
+    const slideCount = countSlides(outputPath);
 
     console.log('\n══════════════════════════════════════════');
     console.log(`  ✅ ASSEMBLY COMPLETE`);
     console.log(`  File  : ${outputFile}`);
-    console.log(`  Slides: ${totalSlides}`);
+    console.log(`  Slides: ${slideCount}`);
     console.log(`  Size  : ${(fileSize / 1024).toFixed(1)} KB`);
     console.log('══════════════════════════════════════════\n');
 
-    return {
-        fileName: outputFile,
-        filePath: outputPath,
-        fileSize,
-        slideCount: totalSlides,
-    };
+    return { fileName: outputFile, filePath: outputPath, fileSize, slideCount };
 }
 
-// ── Backward compatibility aliases ──────────────────────────────────────────
 export const generatePresentation = assemblePresentation;
 export const generatePresentationFromTemplate = assemblePresentation;
-
 export default { assemblePresentation, generatePresentation, generatePresentationFromTemplate };
