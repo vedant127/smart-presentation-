@@ -112,9 +112,10 @@ async function mergePptxFiles(fileList) {
     if (fileList.length === 0) throw new Error('No files to merge!');
 
     // Collect all real slides from all files
-    const allSlides = []; // { xml, rels, mediaFiles, sourceZip }
+    const allSlides = []; // { slideXml, relXml, mediaFiles, fileName, sourceIndex }
 
-    for (const filePath of fileList) {
+    for (let srcIdx = 0; srcIdx < fileList.length; srcIdx++) {
+        const filePath = fileList[srcIdx];
         const buffer = fs.readFileSync(filePath);
         const zip = await JSZip.loadAsync(buffer);
         const fileName = path.basename(filePath);
@@ -132,7 +133,10 @@ async function mergePptxFiles(fileList) {
         let skipped = 0;
 
         for (const slidePath of slidePaths) {
-            const slideXml = await zip.file(slidePath).async('string');
+            const slideFile = zip.file(slidePath);
+            if (!slideFile || slideFile.dir) continue;
+
+            const slideXml = await slideFile.async('string');
 
             // ── SKIP FAKE SLIDES ──────────────────────────────────────
             if (isFakeSlide(slideXml)) {
@@ -142,24 +146,42 @@ async function mergePptxFiles(fileList) {
             }
 
             // Get slide relationships
-            const relPath = slidePath.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
-            const relXml = zip.file(relPath) ? await zip.file(relPath).async('string') : null;
+            const srcNum = slidePath.match(/slide(\d+)/)[1];
+            const relPath = `ppt/slides/_rels/slide${srcNum}.xml.rels`;
+            let relXml = zip.file(relPath) ? await zip.file(relPath).async('string') : null;
 
-            // Get media files referenced by this slide
+            // Get media files referenced by this slide & rename to avoid collisions
             const mediaFiles = {};
             if (relXml) {
-                const mediaRefs = [...relXml.matchAll(/Target="\.\.\/(media\/[^"]+)"/g)];
+                // Match Target="../media/image1.png" style references
+                const mediaRefs = [...relXml.matchAll(/Target="\.\.\/media\/([^"]+)"/g)];
                 for (const ref of mediaRefs) {
-                    const mediaName = ref[1];
-                    const mediaPath = `ppt/media/${mediaName}`;
-                    if (zip.file(mediaPath)) {
-                        mediaFiles[mediaName] = await zip.file(mediaPath).async('nodebuffer');
+                    const origMediaName = ref[1]; // e.g. "image1.png"
+                    const uniqueMediaName = `src${srcIdx}_${origMediaName}`; // unique per source
+
+                    // Read the actual media file from source
+                    const srcMediaFile = zip.file(`ppt/media/${origMediaName}`);
+                    if (srcMediaFile && !srcMediaFile.dir) {
+                        mediaFiles[uniqueMediaName] = await srcMediaFile.async('nodebuffer');
                     }
+
+                    // Update the rels XML to point to the new unique media name
+                    relXml = relXml.split(`../media/${origMediaName}`).join(`../media/${uniqueMediaName}`);
                 }
+
+                // Also handle slideLayout, slideMaster, theme references
+                // These use relative paths like "../slideLayouts/slideLayout1.xml"
+                // We keep them as-is since they reference the base template's layouts
             }
 
-            allSlides.push({ slideXml, relXml, mediaFiles, fileName });
+            allSlides.push({ slideXml, relXml, mediaFiles, fileName, sourceIndex: srcIdx });
             kept++;
+        }
+
+        // Also collect slide layouts & themes from source (we need them for proper rendering)
+        // Copy slideLayouts, slideMasters, and theme from each source
+        if (srcIdx > 0) {
+            // We'll handle layout/master copying separately below
         }
 
         console.log(`     📄 ${fileName} → kept ${kept}, skipped ${skipped}`);
@@ -167,11 +189,13 @@ async function mergePptxFiles(fileList) {
 
     if (allSlides.length === 0) throw new Error('No real slides found after filtering!');
 
+    console.log(`   [Merge] Total real slides collected: ${allSlides.length}`);
+
     // ── Build output PPTX from first file as base ─────────────────────
     const baseBuffer = fs.readFileSync(fileList[0]);
     const outputZip = await JSZip.loadAsync(baseBuffer);
 
-    // Remove all existing slides from base
+    // Remove ALL existing slides and their rels from the base
     const existingSlides = Object.keys(outputZip.files)
         .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
     for (const s of existingSlides) {
@@ -180,57 +204,103 @@ async function mergePptxFiles(fileList) {
         if (outputZip.file(rel)) outputZip.remove(rel);
     }
 
-    // Add all real slides
+    // ── Add all real slides with proper numbering ─────────────────────
     for (let i = 0; i < allSlides.length; i++) {
         const { slideXml, relXml, mediaFiles } = allSlides[i];
         const slideNum = i + 1;
 
+        // Write slide XML
         outputZip.file(`ppt/slides/slide${slideNum}.xml`, slideXml);
 
+        // Write slide rels (or create a minimal one if none exists)
         if (relXml) {
             outputZip.file(`ppt/slides/_rels/slide${slideNum}.xml.rels`, relXml);
+        } else {
+            // Create a minimal rels file pointing to the first slide layout
+            const minimalRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`;
+            outputZip.file(`ppt/slides/_rels/slide${slideNum}.xml.rels`, minimalRels);
         }
 
-        // Add media files
+        // Add media files (already uniquely named per source)
         for (const [mediaName, mediaBuffer] of Object.entries(mediaFiles)) {
-            const newMediaPath = `ppt/media/${mediaName}`;
-            if (!outputZip.file(newMediaPath)) {
-                outputZip.file(newMediaPath, mediaBuffer);
-            }
+            outputZip.file(`ppt/media/${mediaName}`, mediaBuffer);
         }
     }
 
-    // Update [Content_Types].xml
+    // ── Update [Content_Types].xml ───────────────────────────────────
     let contentTypes = await outputZip.file('[Content_Types].xml').async('string');
-    // Remove old slide entries
+    // Remove ALL old slide override entries
     contentTypes = contentTypes.replace(
         /<Override PartName="\/ppt\/slides\/slide\d+\.xml"[^/]*\/>/g, ''
     );
     // Add new slide entries
-    let newEntries = '';
+    let ctEntries = '';
     for (let i = 1; i <= allSlides.length; i++) {
-        newEntries += `<Override PartName="/ppt/slides/slide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
+        ctEntries += `<Override PartName="/ppt/slides/slide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
     }
-    contentTypes = contentTypes.replace('</Types>', `${newEntries}</Types>`);
+    contentTypes = contentTypes.replace('</Types>', `${ctEntries}</Types>`);
     outputZip.file('[Content_Types].xml', contentTypes);
 
-    // Update ppt/presentation.xml sldIdLst
+    // ── Update ppt/presentation.xml ─────────────────────────────────
     let presXml = await outputZip.file('ppt/presentation.xml').async('string');
 
-    // Find max existing id
-    let maxId = 255;
-    const idMatches = [...presXml.matchAll(/id="(\d+)"/g)];
-    for (const m of idMatches) maxId = Math.max(maxId, parseInt(m[1]));
+    // Find max existing numeric id (for sldId)
+    let maxSldId = 255;
+    for (const m of presXml.matchAll(/id="(\d+)"/g)) {
+        maxSldId = Math.max(maxSldId, parseInt(m[1]));
+    }
 
-    // Replace sldIdLst completely
+    // Build new sldIdLst with unique rIds
     let sldIdLst = '';
     for (let i = 1; i <= allSlides.length; i++) {
-        maxId++;
-        sldIdLst += `<p:sldId id="${maxId}" r:id="rId_s${i}"/>`;
+        maxSldId++;
+        sldIdLst += `<p:sldId id="${maxSldId}" r:id="rId_slide${i}"/>`;
     }
-    presXml = presXml.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, `<p:sldIdLst>${sldIdLst}</p:sldIdLst>`);
+
+    if (presXml.includes('</p:sldIdLst>')) {
+        presXml = presXml.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, `<p:sldIdLst>${sldIdLst}</p:sldIdLst>`);
+    } else {
+        // If sldIdLst doesn't exist, add it before </p:presentation>
+        presXml = presXml.replace('</p:presentation>', `<p:sldIdLst>${sldIdLst}</p:sldIdLst></p:presentation>`);
+    }
     outputZip.file('ppt/presentation.xml', presXml);
 
+    // ══════════════════════════════════════════════════════════════════
+    //  FIX: UPDATE ppt/_rels/presentation.xml.rels WITH SLIDE ENTRIES
+    //  Without this, PowerPoint can't find the slides → BLANK output!
+    // ══════════════════════════════════════════════════════════════════
+    const presRelsPath = 'ppt/_rels/presentation.xml.rels';
+    let presRelsXml = '';
+    const presRelsFile = outputZip.file(presRelsPath);
+    if (presRelsFile) {
+        presRelsXml = await presRelsFile.async('string');
+    } else {
+        // Create a minimal rels file
+        presRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+</Relationships>`;
+    }
+
+    // Remove ALL old slide relationships from presentation.xml.rels
+    presRelsXml = presRelsXml.replace(
+        /<Relationship[^>]*Type="http:\/\/schemas\.openxmlformats\.org\/officeDocument\/2006\/relationships\/slide"[^>]*\/>/g,
+        ''
+    );
+
+    // Add NEW slide relationship entries matching the rId_slide1, rId_slide2, etc.
+    let newSlideRels = '';
+    for (let i = 1; i <= allSlides.length; i++) {
+        newSlideRels += `<Relationship Id="rId_slide${i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i}.xml"/>`;
+    }
+
+    // Insert before closing </Relationships>
+    presRelsXml = presRelsXml.replace('</Relationships>', `${newSlideRels}</Relationships>`);
+    outputZip.file(presRelsPath, presRelsXml);
+
+    // ── Generate output buffer ──────────────────────────────────────
     const outputBuffer = await outputZip.generateAsync({
         type: 'nodebuffer',
         compression: 'DEFLATE',
