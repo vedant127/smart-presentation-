@@ -20,9 +20,8 @@ function makePlotKey(plot) {
         plot.category || plot.Category || '',
         plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
     ]
-        .map(s => s.trim())
-        .join(' + ')
-        .toLowerCase();
+        .map(s => s.trim().toLowerCase().replace(/\s+/g, '_'))
+        .join('_');
 }
 
 // ─── Deduplication ───────────────────────────────────────────────────────────
@@ -83,16 +82,7 @@ const FAKE_SLIDE_PATTERNS = [
     'Sensitivity Matrix (Price vs. Cost)',
     'The project yields a Total Profit of $85M',
     'Unlevered IRR: 14%',
-    'Market Outlook & Opportunities',
     'Pricing Rationale',
-    'Financial Results Summary',
-    'Project IRR',
-    'Assumptions - Part',
-    'METHODOLOGY',
-    'CASH FLOW STATEMENTS',
-    'RETURN ANALYSIS',
-    'SENSITIVITY ANALYSIS',
-    'FINANCIAL RESULTS SUMMARY',
 ];
 
 function isFakeSlide(slideXml) {

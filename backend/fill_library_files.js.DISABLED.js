@@ -6,7 +6,8 @@ const baseLibrary = path.join(process.cwd(), "Library", "Feasibility Study");
 
 async function generateFile(folder, filename, title, slidesContent) {
     const pptx = new PptxGenJS();
-    pptx.layout = "LAYOUT_16x9";
+    pptx.defineLayout({ name: 'CUSTOM', width: 20, height: 11.25 });
+    pptx.layout = 'CUSTOM';
     pptx.theme = { headFontFace: "Arial", bodyFontFace: "Arial" };
 
     for (const slideData of slidesContent) {
@@ -95,7 +96,7 @@ async function main() {
                 "Rental yields averaging 6-8% annually",
                 "Target demographic: High Net Worth Individuals (HNWIs) and corporate executives"
             ]
-        } 
+        }
     ]);
 
     // 06_Market Overview - Dubai
@@ -114,6 +115,18 @@ async function main() {
                 "High demand in areas like Downtown Dubai, Palm Jumeirah, and Dubai Marina",
                 "Prices for ultra-luxury units exceeding 3,000 AED per sqft",
                 "Strong ROI and robust capital appreciation projected"
+            ]
+        }
+    ]);
+
+    // 06_Market Overview - Riyadh
+    await generateFile("06_Market Overview", "riyadh + residential + small regional mall + business.pptx", "Market Overview: Riyadh Residential & Mall", [
+        {
+            title: "Riyadh Real Estate Market Dynamics",
+            bullets: [
+                "Strong economic growth driven by Vision 2030 initiatives and business expansion",
+                "Increasing demand for mixed-use developments combining residential and retail",
+                "Rapid population growth and urbanization fueling retail and housing sectors"
             ]
         }
     ]);
@@ -139,6 +152,30 @@ async function main() {
                 "State-of-the-art fitness center and wellness spa",
                 "Private cinema, business lounge, and kids play area",
                 "Smart home technology integrated into all units"
+            ]
+        }
+    ]);
+
+    // 08_Development Recommendations Part 2 - Riyadh
+    await generateFile("08_Development Recommendations Part 2", "riyadh + residential + small regional mall + business.pptx", "Development Recommendations Part 2: Riyadh", [
+        {
+            title: "Retail & Business Integration",
+            bullets: [
+                "Strategic placement of the small regional mall to maximize foot traffic",
+                "Synergy between residential units and business/retail facilities",
+                "Creating a self-sustaining community hub tailored for modern urban living"
+            ]
+        }
+    ]);
+
+    // 09_Development Recommendations Part 3 - Riyadh
+    await generateFile("09_Development Recommendations Part 3", "riyadh + residential + small regional mall + business.pptx", "Development Recommendations Part 3: Riyadh", [
+        {
+            title: "Architectural & Design Guidelines",
+            bullets: [
+                "Contemporary design reflecting Riyadh's evolving skyline",
+                "Sustainable building materials and energy-efficient systems",
+                "Flexible commercial spaces designed for high visibility and accessibility"
             ]
         }
     ]);
