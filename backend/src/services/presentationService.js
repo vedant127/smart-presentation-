@@ -5,10 +5,12 @@ import JSZip from 'jszip';
 import PizZip from 'pizzip';
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PRESENTATION SERVICE (Legacy) — v5 Bulletproof JSZip merge
-//  Same logic as presentationServiceEnhanced.js
+//  PRESENTATION SERVICE (Legacy) — v6 Template-Only merge
+//  Uses ONLY original template slides. No AI. No filtering.
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ─── Plot Key ────────────────────────────────────────────────────────────────
+// Format: "city + asset type + category + specs" (matches library filenames)
 function makePlotKey(plot) {
     return [
         plot.city || plot.City || '',
@@ -61,7 +63,7 @@ function getLibraryPath() {
     throw new Error(`Library folder not found!`);
 }
 
-// ─── Bulletproof Merge ───────────────────────────────────────────────────────
+// ─── Merge ───────────────────────────────────────────────────────────────────
 async function mergePptxFiles(fileList) {
     if (fileList.length === 0) throw new Error('No files to merge!');
     if (fileList.length === 1) return fs.readFileSync(fileList[0]);
@@ -71,7 +73,6 @@ async function mergePptxFiles(fileList) {
 
     let slideCount = countSlidesInZip(outputZip);
 
-    // Track max rId in presentation.xml.rels
     let maxRId = 0;
     const presRelsPath = 'ppt/_rels/presentation.xml.rels';
     let presRelsXml = '';
@@ -83,7 +84,6 @@ async function mergePptxFiles(fileList) {
         }
     }
 
-    // Track max sldId in presentation.xml
     let maxSldId = 256;
     let presXml = '';
     const presXmlFile = outputZip.file('ppt/presentation.xml');
@@ -118,14 +118,12 @@ async function mergePptxFiles(fileList) {
 
             outputZip.file(`ppt/slides/slide${slideCount}.xml`, await slideFile.async('string'));
 
-            // Copy slide .rels and rewrite media paths with unique names
             const srcNum = srcSlidePath.match(/slide(\d+)/)[1];
             const srcRelFile = srcZip.file(`ppt/slides/_rels/slide${srcNum}.xml.rels`);
             if (srcRelFile && !srcRelFile.dir) {
                 let relXml = await srcRelFile.async('string');
-                // Fix: properly extract just the filename from ../media/filename
                 for (const mr of relXml.matchAll(/Target="\.\.\/media\/([^"]+)"/g)) {
-                    const orig = mr[1]; // e.g. "image1.png"
+                    const orig = mr[1];
                     const uniq = `s${s}_${orig}`;
                     relXml = relXml.split(`../media/${orig}`).join(`../media/${uniq}`);
                     const srcMedia = srcZip.file(`ppt/media/${orig}`);
@@ -142,18 +140,15 @@ async function mergePptxFiles(fileList) {
         }
     }
 
-    // Patch Content_Types
     if (newContentTypeEntries.length > 0) {
         const ct = outputZip.file('[Content_Types].xml');
         if (ct) outputZip.file('[Content_Types].xml', (await ct.async('string')).replace('</Types>', newContentTypeEntries.join('') + '</Types>'));
     }
 
-    // Patch presentation.xml
     if (newSldIdEntries.length > 0 && presXml.includes('</p:sldIdLst>')) {
         outputZip.file('ppt/presentation.xml', presXml.replace('</p:sldIdLst>', newSldIdEntries.join('') + '</p:sldIdLst>'));
     }
 
-    // Patch presentation.xml.rels — THIS WAS THE MISSING PIECE CAUSING BLANK SLIDES
     if (newRelEntries.length > 0 && presRelsXml) {
         outputZip.file(presRelsPath, presRelsXml.replace('</Relationships>', newRelEntries.join('') + '</Relationships>'));
     }

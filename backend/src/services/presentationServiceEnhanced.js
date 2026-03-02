@@ -5,14 +5,18 @@ import JSZip from 'jszip';
 import PizZip from 'pizzip';
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PRESENTATION ASSEMBLY SERVICE (v5 — Bulletproof JSZip merge)
+//  PRESENTATION ASSEMBLY SERVICE (v6 — DB-Driven, Template-Only)
 //
 //  Pure file-merge from Library folder.
-//  NO AI content. NO pptx-automizer. NO RootTemplate needed.
-//  Every slide comes from a real PPTX in the Library.
+//  NO AI content. NO fake slide filtering. NO random slides.
+//  Every slide comes ONLY from the original PPTX templates in the Library.
+//  Section order & file paths are read from the DB PresentationType.sections.
+//  Placeholders like {{PROJECT_NAME}} are replaced with real user data.
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ─── Plot Key ────────────────────────────────────────────────────────────────
+// Generates the filename key for varying sections.
+// Output format: "city + asset type + category + specs" (matches library filenames)
 function makePlotKey(plot) {
     return [
         plot.city || plot.City || '',
@@ -20,8 +24,9 @@ function makePlotKey(plot) {
         plot.category || plot.Category || '',
         plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
     ]
-        .map(s => s.trim().toLowerCase().replace(/\s+/g, '_'))
-        .join('_');
+        .map(s => s.trim())
+        .join(' + ')
+        .toLowerCase();
 }
 
 // ─── Deduplication ───────────────────────────────────────────────────────────
@@ -40,22 +45,29 @@ function getUniquePlots(plots) {
 }
 
 // ─── Locate Library folder ──────────────────────────────────────────────────
-function getLibraryPath() {
+// Searches for the Library/<PresentationType> folder in common locations.
+// Falls back to "Feasibility Study" if no presentationType name is given.
+function getLibraryPath(presentationTypeName) {
     const cwd = process.cwd();
     const __dirname = path.dirname(new URL(import.meta.url).pathname);
+    const typeName = presentationTypeName || 'Feasibility Study';
+
     const candidates = [
-        path.join(cwd, 'Library', 'Feasibility Study'),
-        path.join(cwd, '..', 'Library', 'Feasibility Study'),
-        path.join(cwd, 'src', 'Library', 'Feasibility Study'),
-        path.join(__dirname, '..', 'Library', 'Feasibility Study'),
-        path.join(__dirname, '..', '..', 'Library', 'Feasibility Study'),
-        path.join(cwd, 'Library', 'feasibility_study'),
-        path.join(cwd, '..', 'Library', 'feasibility_study'),
+        path.join(cwd, 'Library', typeName),
+        path.join(cwd, '..', 'Library', typeName),
+        path.join(cwd, 'src', 'Library', typeName),
+        path.join(__dirname, '..', 'Library', typeName),
+        path.join(__dirname, '..', '..', 'Library', typeName),
+        // Also try lowercase with underscores
+        path.join(cwd, 'Library', typeName.toLowerCase().replace(/\s+/g, '_')),
+        path.join(cwd, '..', 'Library', typeName.toLowerCase().replace(/\s+/g, '_')),
+        // Also try the root library folder
+        path.join(cwd, '..', 'library', typeName.toLowerCase().replace(/\s+/g, '_')),
     ];
     for (const p of candidates) {
         if (fs.existsSync(p)) return p;
     }
-    throw new Error(`Library folder not found! Tried:\n${candidates.join('\n')}`);
+    throw new Error(`Library folder not found for "${typeName}"! Tried:\n${candidates.join('\n')}`);
 }
 
 // ─── Count slides in a PPTX ─────────────────────────────────────────────────
@@ -72,36 +84,18 @@ function countSlides(filePath) {
     } catch { return 0; }
 }
 
-// ─── Filter out fake/placeholder slides ──────────────────────────────────────
-// Slides containing these texts are fake AI-generated content — skip them
-const FAKE_SLIDE_PATTERNS = [
-    '[Location Map Placeholder]',
-    '[Location Map Reference]',
-    '[Process Flow Diagram',
-    '[Cash Flow Column Chart Placeholder]',
-    'Sensitivity Matrix (Price vs. Cost)',
-    'The project yields a Total Profit of $85M',
-    'Unlevered IRR: 14%',
-    'Pricing Rationale',
-];
-
-function isFakeSlide(slideXml) {
-    const decoded = slideXml.replace(/&#xD;/g, '').replace(/<[^>]*>/g, ' ');
-    return FAKE_SLIDE_PATTERNS.some(pattern => decoded.includes(pattern));
-}
-
 // ══════════════════════════════════════════════════════════════════════════════
-//  CORE MERGE — Bulletproof version with FAKE SLIDE FILTERING
+//  CORE MERGE — Keeps ALL original template slides (no filtering)
 //
-//  Strategy: Collect ALL slides from ALL files, filter out fake/placeholder
-//  slides, then build a clean output PPTX with only real slides.
+//  Strategy: Collect ALL slides from ALL PPTX files in order,
+//  then build a clean output PPTX. Only original template slides are used.
 // ══════════════════════════════════════════════════════════════════════════════
 async function mergePptxFiles(fileList) {
     console.log(`\n   [Merge] Starting merge of ${fileList.length} files...`);
 
     if (fileList.length === 0) throw new Error('No files to merge!');
 
-    // Collect all real slides from all files
+    // Collect ALL slides from all files (no filtering — template slides only)
     const allSlides = []; // { slideXml, relXml, mediaFiles, fileName, sourceIndex }
 
     for (let srcIdx = 0; srcIdx < fileList.length; srcIdx++) {
@@ -120,20 +114,12 @@ async function mergePptxFiles(fileList) {
             });
 
         let kept = 0;
-        let skipped = 0;
 
         for (const slidePath of slidePaths) {
             const slideFile = zip.file(slidePath);
             if (!slideFile || slideFile.dir) continue;
 
             const slideXml = await slideFile.async('string');
-
-            // ── SKIP FAKE SLIDES ──────────────────────────────────────
-            if (isFakeSlide(slideXml)) {
-                skipped++;
-                console.log(`     ⏭️  SKIPPED fake slide: ${fileName} → ${slidePath}`);
-                continue;
-            }
 
             // Get slide relationships
             const srcNum = slidePath.match(/slide(\d+)/)[1];
@@ -143,43 +129,30 @@ async function mergePptxFiles(fileList) {
             // Get media files referenced by this slide & rename to avoid collisions
             const mediaFiles = {};
             if (relXml) {
-                // Match Target="../media/image1.png" style references
                 const mediaRefs = [...relXml.matchAll(/Target="\.\.\/media\/([^"]+)"/g)];
                 for (const ref of mediaRefs) {
-                    const origMediaName = ref[1]; // e.g. "image1.png"
-                    const uniqueMediaName = `src${srcIdx}_${origMediaName}`; // unique per source
+                    const origMediaName = ref[1];
+                    const uniqueMediaName = `src${srcIdx}_${origMediaName}`;
 
-                    // Read the actual media file from source
                     const srcMediaFile = zip.file(`ppt/media/${origMediaName}`);
                     if (srcMediaFile && !srcMediaFile.dir) {
                         mediaFiles[uniqueMediaName] = await srcMediaFile.async('nodebuffer');
                     }
 
-                    // Update the rels XML to point to the new unique media name
                     relXml = relXml.split(`../media/${origMediaName}`).join(`../media/${uniqueMediaName}`);
                 }
-
-                // Also handle slideLayout, slideMaster, theme references
-                // These use relative paths like "../slideLayouts/slideLayout1.xml"
-                // We keep them as-is since they reference the base template's layouts
             }
 
             allSlides.push({ slideXml, relXml, mediaFiles, fileName, sourceIndex: srcIdx });
             kept++;
         }
 
-        // Also collect slide layouts & themes from source (we need them for proper rendering)
-        // Copy slideLayouts, slideMasters, and theme from each source
-        if (srcIdx > 0) {
-            // We'll handle layout/master copying separately below
-        }
-
-        console.log(`     📄 ${fileName} → kept ${kept}, skipped ${skipped}`);
+        console.log(`     📄 ${fileName} → ${kept} slide(s) collected`);
     }
 
-    if (allSlides.length === 0) throw new Error('No real slides found after filtering!');
+    if (allSlides.length === 0) throw new Error('No slides found in any template file!');
 
-    console.log(`   [Merge] Total real slides collected: ${allSlides.length}`);
+    console.log(`   [Merge] Total slides collected: ${allSlides.length}`);
 
     // ── Build output PPTX from first file as base ─────────────────────
     const baseBuffer = fs.readFileSync(fileList[0]);
@@ -194,19 +167,16 @@ async function mergePptxFiles(fileList) {
         if (outputZip.file(rel)) outputZip.remove(rel);
     }
 
-    // ── Add all real slides with proper numbering ─────────────────────
+    // ── Add all slides with proper numbering ─────────────────────
     for (let i = 0; i < allSlides.length; i++) {
         const { slideXml, relXml, mediaFiles } = allSlides[i];
         const slideNum = i + 1;
 
-        // Write slide XML
         outputZip.file(`ppt/slides/slide${slideNum}.xml`, slideXml);
 
-        // Write slide rels (or create a minimal one if none exists)
         if (relXml) {
             outputZip.file(`ppt/slides/_rels/slide${slideNum}.xml.rels`, relXml);
         } else {
-            // Create a minimal rels file pointing to the first slide layout
             const minimalRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
@@ -214,7 +184,6 @@ async function mergePptxFiles(fileList) {
             outputZip.file(`ppt/slides/_rels/slide${slideNum}.xml.rels`, minimalRels);
         }
 
-        // Add media files (already uniquely named per source)
         for (const [mediaName, mediaBuffer] of Object.entries(mediaFiles)) {
             outputZip.file(`ppt/media/${mediaName}`, mediaBuffer);
         }
@@ -222,11 +191,9 @@ async function mergePptxFiles(fileList) {
 
     // ── Update [Content_Types].xml ───────────────────────────────────
     let contentTypes = await outputZip.file('[Content_Types].xml').async('string');
-    // Remove ALL old slide override entries
     contentTypes = contentTypes.replace(
         /<Override PartName="\/ppt\/slides\/slide\d+\.xml"[^/]*\/>/g, ''
     );
-    // Add new slide entries
     let ctEntries = '';
     for (let i = 1; i <= allSlides.length; i++) {
         ctEntries += `<Override PartName="/ppt/slides/slide${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
@@ -237,13 +204,11 @@ async function mergePptxFiles(fileList) {
     // ── Update ppt/presentation.xml ─────────────────────────────────
     let presXml = await outputZip.file('ppt/presentation.xml').async('string');
 
-    // Find max existing numeric id (for sldId)
     let maxSldId = 255;
     for (const m of presXml.matchAll(/id="(\d+)"/g)) {
         maxSldId = Math.max(maxSldId, parseInt(m[1]));
     }
 
-    // Build new sldIdLst with unique rIds
     let sldIdLst = '';
     for (let i = 1; i <= allSlides.length; i++) {
         maxSldId++;
@@ -253,40 +218,32 @@ async function mergePptxFiles(fileList) {
     if (presXml.includes('</p:sldIdLst>')) {
         presXml = presXml.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, `<p:sldIdLst>${sldIdLst}</p:sldIdLst>`);
     } else {
-        // If sldIdLst doesn't exist, add it before </p:presentation>
         presXml = presXml.replace('</p:presentation>', `<p:sldIdLst>${sldIdLst}</p:sldIdLst></p:presentation>`);
     }
     outputZip.file('ppt/presentation.xml', presXml);
 
-    // ══════════════════════════════════════════════════════════════════
-    //  FIX: UPDATE ppt/_rels/presentation.xml.rels WITH SLIDE ENTRIES
-    //  Without this, PowerPoint can't find the slides → BLANK output!
-    // ══════════════════════════════════════════════════════════════════
+    // ── Update ppt/_rels/presentation.xml.rels ──────────────────────
     const presRelsPath = 'ppt/_rels/presentation.xml.rels';
     let presRelsXml = '';
     const presRelsFile = outputZip.file(presRelsPath);
     if (presRelsFile) {
         presRelsXml = await presRelsFile.async('string');
     } else {
-        // Create a minimal rels file
         presRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 </Relationships>`;
     }
 
-    // Remove ALL old slide relationships from presentation.xml.rels
     presRelsXml = presRelsXml.replace(
         /<Relationship[^>]*Type="http:\/\/schemas\.openxmlformats\.org\/officeDocument\/2006\/relationships\/slide"[^>]*\/>/g,
         ''
     );
 
-    // Add NEW slide relationship entries matching the rId_slide1, rId_slide2, etc.
     let newSlideRels = '';
     for (let i = 1; i <= allSlides.length; i++) {
         newSlideRels += `<Relationship Id="rId_slide${i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i}.xml"/>`;
     }
 
-    // Insert before closing </Relationships>
     presRelsXml = presRelsXml.replace('</Relationships>', `${newSlideRels}</Relationships>`);
     outputZip.file(presRelsPath, presRelsXml);
 
@@ -297,13 +254,15 @@ async function mergePptxFiles(fileList) {
         compressionOptions: { level: 6 }
     });
 
-    console.log(`   [Merge] ✅ Done — ${allSlides.length} real slides merged`);
+    console.log(`   [Merge] ✅ Done — ${allSlides.length} slides merged`);
     return outputBuffer;
 }
 
 // ─── Token Replacement ────────────────────────────────────────────────────────
+// Replaces placeholder tokens like {{PROJECT_NAME}} with actual user data
+// in all slide XML files inside the PPTX.
 async function replaceTokens(pptxPath, replacements) {
-    console.log('   [Tokens] Replacing tokens...');
+    console.log('   [Tokens] Replacing placeholders with user data...');
     const buffer = fs.readFileSync(pptxPath);
     const zip = await JSZip.loadAsync(buffer);
 
@@ -319,6 +278,7 @@ async function replaceTokens(pptxPath, replacements) {
         let xml = await slideFile.async('string');
         let modified = false;
 
+        // Pass 1: Direct token replacement (simple cases)
         for (const [token, value] of Object.entries(replacements)) {
             if (xml.includes(token)) {
                 xml = xml.split(token).join(value);
@@ -328,7 +288,9 @@ async function replaceTokens(pptxPath, replacements) {
             }
         }
 
-        // Handle split tokens across XML runs (PowerPoint splits {{TOKEN}} across <a:r> runs)
+        // Pass 2: Handle split tokens across XML runs
+        // PowerPoint often splits {{TOKEN}} across multiple <a:r> runs like:
+        //   <a:r><a:t>{{</a:t></a:r><a:r><a:t>PROJECT_NAME</a:t></a:r><a:r><a:t>}}</a:t></a:r>
         for (const [token, value] of Object.entries(replacements)) {
             const paragraphRegex = /<a:p\b[^>]*>[\s\S]*?<\/a:p>/g;
             xml = xml.replace(paragraphRegex, (paragraph) => {
@@ -366,77 +328,118 @@ async function replaceTokens(pptxPath, replacements) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  MAIN ASSEMBLY FUNCTION
+//
+//  Reads section definitions from the DB (presentationType.sections),
+//  finds the corresponding PPTX files in the Library folder,
+//  merges them, and replaces placeholders with user data.
+//
+//  NO AI. NO random slides. ONLY original template slides.
 // ══════════════════════════════════════════════════════════════════════════════
 export async function assemblePresentation({ presentationType, formData = {}, plots = [], userId }) {
     console.log('\n══════════════════════════════════════════');
-    console.log('  ASSEMBLY START (v5 — Bulletproof Merge)');
+    console.log('  ASSEMBLY START (v6 — DB-Driven, Template-Only)');
     console.log('══════════════════════════════════════════');
 
-    const LIBRARY = getLibraryPath();
+    // Get the presentation type name for library path lookup
+    const typeName = presentationType.name || 'Feasibility Study';
+    const LIBRARY = getLibraryPath(typeName);
     console.log(`   Library: ${LIBRARY}`);
 
-    // ── 1. Normalize plots ──────────────────────────────────────────────
+    // ── 1. Get sections from DB (sorted by order) ───────────────────────
+    const sections = (presentationType.sections || [])
+        .slice()
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    if (sections.length === 0) {
+        throw new Error(`No sections defined for presentation type "${typeName}". Please configure sections in the database.`);
+    }
+    console.log(`   Sections from DB: ${sections.length}`);
+
+    // ── 2. Normalize plots ──────────────────────────────────────────────
     const rawPlots = (plots && plots.length > 0)
         ? plots.map(p => p.criteria || p.data || p)
         : [formData];
 
-    // ── 2. Deduplicate ──────────────────────────────────────────────────
+    // ── 3. Deduplicate ──────────────────────────────────────────────────
     const uniquePlots = getUniquePlots(rawPlots);
     console.log(`   Plots: ${rawPlots.length} total → ${uniquePlots.length} unique\n`);
 
-    // ── 3. Build ordered file list ──────────────────────────────────────
+    // ── 4. Build ordered file list from DB sections ─────────────────────
     const files = [];
 
-    function addFixed(folder, filename, label) {
-        const p = path.join(LIBRARY, folder, filename);
-        if (fs.existsSync(p)) {
-            files.push(p);
-            console.log(`     ✅ FOUND:   ${label} → ${filename}`);
+    for (const section of sections) {
+        const folderPath = section.folderPath || section.name;
+        const isVarying = section.isVarying || false;
+        const sectionName = section.name;
+
+        if (isVarying) {
+            // ── VARYING SECTION: one file per unique plot combination ──
+            for (const plot of uniquePlots) {
+                const key = makePlotKey(plot);
+                const fileName = `${key}.pptx`;
+                const fullPath = path.join(LIBRARY, folderPath, fileName);
+
+                if (fs.existsSync(fullPath)) {
+                    files.push(fullPath);
+                    console.log(`     ✅ FOUND:   ${sectionName} [${key}]`);
+                } else {
+                    console.warn(`     ❌ MISSING: ${sectionName} [${key}] → ${fullPath}`);
+                }
+            }
         } else {
-            console.warn(`     ❌ MISSING: ${label} → ${p}`);
+            // ── FIXED SECTION: single static file ──
+            // Use the filename from DB, or try common naming conventions
+            const possibleFilenames = [];
+
+            if (section.filename) {
+                possibleFilenames.push(section.filename);
+            }
+
+            // Also try common auto-generated names based on section name
+            const sanitizedName = sectionName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+            possibleFilenames.push(`${sanitizedName}.pptx`);
+
+            // Try to find the file
+            let found = false;
+            for (const fname of possibleFilenames) {
+                const fullPath = path.join(LIBRARY, folderPath, fname);
+                if (fs.existsSync(fullPath)) {
+                    files.push(fullPath);
+                    console.log(`     ✅ FOUND:   ${sectionName} → ${fname}`);
+                    found = true;
+                    break;
+                }
+            }
+
+            // If no specific file found, try to find ANY .pptx file in the folder
+            if (!found) {
+                const folderFullPath = path.join(LIBRARY, folderPath);
+                if (fs.existsSync(folderFullPath)) {
+                    const pptxFiles = fs.readdirSync(folderFullPath)
+                        .filter(f => f.endsWith('.pptx'))
+                        .sort();
+                    if (pptxFiles.length > 0) {
+                        const fullPath = path.join(folderFullPath, pptxFiles[0]);
+                        files.push(fullPath);
+                        console.log(`     ✅ FOUND:   ${sectionName} → ${pptxFiles[0]} (auto-detected)`);
+                        found = true;
+                    }
+                }
+            }
+
+            if (!found) {
+                console.warn(`     ❌ MISSING: ${sectionName} → No PPTX found in ${folderPath}`);
+            }
         }
     }
-
-    function addVarying(folder, plot, label) {
-        const key = makePlotKey(plot);
-        const p = path.join(LIBRARY, folder, `${key}.pptx`);
-        if (fs.existsSync(p)) {
-            files.push(p);
-            console.log(`     ✅ FOUND:   ${label} [${key}]`);
-        } else {
-            console.warn(`     ❌ MISSING: ${label} [${key}] → ${p}`);
-        }
-    }
-
-    addFixed('01_Cover Page', 'cover.pptx', 'Cover Page');
-    addFixed('02_Table of Contents', 'toc.pptx', 'Table of Contents');
-    addFixed('03_Project Background', 'project_background.pptx', 'Project Background');
-    addFixed('04_Executive Summary', 'executive_summary.pptx', 'Executive Summary');
-    addFixed('05_Site Assessment', 'site_assessment.pptx', 'Site Assessment');
-
-    for (const plot of uniquePlots) {
-        addVarying('06_Market Overview', plot, 'Market Overview');
-    }
-
-    addFixed('07_Development Recommendations Part 1', 'devrec_part1.pptx', 'Dev Recs Part 1');
-
-    for (const plot of uniquePlots) {
-        addVarying('08_Development Recommendations Part 2', plot, 'Dev Recs Part 2');
-    }
-
-    for (const plot of uniquePlots) {
-        addVarying('09_Development Recommendations Part 3', plot, 'Dev Recs Part 3');
-    }
-    addFixed('10_Financial & Investment Analysis', 'financial_investment_analysis.pptx', 'Financial Analysis');
-    addFixed('11_Disclaimer', 'disclaimer.pptx', 'Disclaimer');
 
     console.log(`\n   Files to merge: ${files.length}`);
-    if (files.length === 0) throw new Error('No Library files found! Check Library folder.');
+    if (files.length === 0) throw new Error('No Library files found! Check Library folder structure and section configuration.');
 
-    // ── 4. Merge all files ──────────────────────────────────────────────
+    // ── 5. Merge all files ──────────────────────────────────────────────
     const mergedBuffer = await mergePptxFiles(files);
 
-    // ── 5. Write output ─────────────────────────────────────────────────
+    // ── 6. Write output ─────────────────────────────────────────────────
     const baseDir = process.cwd();
     const outputDir = path.join(baseDir, 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
@@ -447,7 +450,7 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     const outputPath = path.join(outputDir, outputFile);
     fs.writeFileSync(outputPath, mergedBuffer);
 
-    // ── 6. Replace tokens on cover page ────────────────────────────────
+    // ── 7. Replace placeholders with actual user data ───────────────────
     const projectName = formData.title || formData.projectName || formData.projectTitle || 'Untitled Project';
     const clientName = formData.clientName || formData.client_name || 'Confidential';
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -467,7 +470,7 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
         '{{YEAR}}': new Date().getFullYear().toString(),
     });
 
-    // ── 7. Done ─────────────────────────────────────────────────────────
+    // ── 8. Done ─────────────────────────────────────────────────────────
     const fileSize = fs.statSync(outputPath).size;
     const slideCount = countSlides(outputPath);
 

@@ -1,13 +1,12 @@
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import JSZip from 'jszip'; // Using JSZip as the merger engine
+import JSZip from 'jszip';
 import PizZip from 'pizzip';
 
 // ─── Locate Library folder ──────────────────────────────────────────────────
 function getLibraryPath() {
     const cwd = process.cwd();
-    // Assuming structure: Library/Feasibility Study
     const candidates = [
         path.join(cwd, 'Library', 'Feasibility Study'),
         path.join(cwd, '..', 'Library', 'Feasibility Study'),
@@ -16,12 +15,26 @@ function getLibraryPath() {
     for (const p of candidates) {
         if (fs.existsSync(p)) return p;
     }
-    // Return early/default if not found, we will handle missing files gracefully
     return path.join(cwd, 'Library', 'Feasibility Study');
 }
 
+// ─── Plot Key ────────────────────────────────────────────────────────────────
+// Format: "city + asset type + category + specs" (matches library filenames)
+function makePlotKey(plot) {
+    return [
+        plot.city || plot.City || '',
+        plot.assetType || plot['Asset Type'] || plot.asset_type || '',
+        plot.category || plot.Category || '',
+        plot.specs || plot.specifications || plot.Specifications || plot.spec || ''
+    ]
+        .map(s => s.trim())
+        .join(' + ')
+        .toLowerCase();
+}
+
 // ─── PPTX Merger Function ───────────────────────────────────────────────────
-// Acts as the "pptx-merger" using JSZip structure
+// Merges multiple PPTX files into a single output using JSZip.
+// Keeps ALL original template slides — no filtering.
 async function mergePptxFiles(fileList) {
     console.log(`\n[Merge] Starting merge of ${fileList.length} files...`);
     if (fileList.length === 0) throw new Error('No files to merge!');
@@ -151,6 +164,53 @@ async function mergePptxFiles(fileList) {
     return outputBuffer;
 }
 
+// ─── Token Replacement ───────────────────────────────────────────────────────
+async function replaceTokens(pptxPath, replacements) {
+    console.log('[Tokens] Replacing placeholders with user data...');
+    const buffer = fs.readFileSync(pptxPath);
+    const zip = await JSZip.loadAsync(buffer);
+    const slideFiles = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+
+    let totalReplaced = 0;
+
+    for (const slidePath of slideFiles) {
+        const sf = zip.file(slidePath);
+        if (!sf || sf.dir) continue;
+        let xml = await sf.async('string');
+        let modified = false;
+
+        for (const [token, value] of Object.entries(replacements)) {
+            if (xml.includes(token)) { xml = xml.split(token).join(value); modified = true; totalReplaced++; }
+        }
+
+        for (const [token, value] of Object.entries(replacements)) {
+            xml = xml.replace(/<a:p\b[^>]*>[\s\S]*?<\/a:p>/g, (paragraph) => {
+                const parts = []; let m;
+                const re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g;
+                while ((m = re.exec(paragraph)) !== null) parts.push(m[1]);
+                const full = parts.join('');
+                if (full.includes(token)) {
+                    modified = true;
+                    totalReplaced++;
+                    const replaced = full.split(token).join(value);
+                    let first = true;
+                    return paragraph.replace(/<a:r\b[^>]*>[\s\S]*?<\/a:r>/g, (run) => {
+                        if (first) { first = false; return run.replace(/<a:t[^>]*>[\s\S]*?<\/a:t>/, `<a:t>${replaced}</a:t>`); }
+                        const t = run.replace(/<[^>]*>/g, '').trim();
+                        if (token.includes(t) || t.includes('{') || t.includes('}')) return '';
+                        return run;
+                    });
+                }
+                return paragraph;
+            });
+        }
+        if (modified) zip.file(slidePath, xml);
+    }
+
+    fs.writeFileSync(pptxPath, await zip.generateAsync({ type: 'nodebuffer' }));
+    console.log(`[Tokens] Done — ${totalReplaced} replacement(s)`);
+}
+
 // ─── Main Assembly Service ──────────────────────────────────────────────────
 export async function assembleReport(formData, plots) {
     console.log('\n[Assemble Report] Creating final presentation...');
@@ -158,31 +218,23 @@ export async function assembleReport(formData, plots) {
     const LIBRARY = getLibraryPath();
     const filesToMerge = [];
 
-    // 1. Deduplication (Mistake Fix #2)
-    // Use a Set to track seen combinations
+    // 1. Deduplication
     const seenPlots = new Set();
     const uniquePlots = [];
 
     for (const plot of plots) {
-        // Build the combination key (Match presentationServiceEnhanced.js makePlotKey behavior)
-        const key = [
-            plot.city || plot.City || '',
-            plot.assetType || plot['Asset Type'] || plot.asset_type || '',
-            plot.category || plot.Category || '',
-            plot.specs || plot.specifications || plot.Specifications || plot.spec || ''
-        ].map(s => s.trim().toLowerCase().replace(/\s+/g, '_')).join('_');
+        const key = makePlotKey(plot);
 
         if (!seenPlots.has(key)) {
             seenPlots.add(key);
             uniquePlots.push({ ...plot, fileKey: key });
-            console.log(`[Dedup] 🟢 Unique plot combination appended: ${key}`);
+            console.log(`[Dedup] 🟢 Unique plot: ${key}`);
         } else {
-            console.log(`[Dedup] 🟡 Skipped duplicate plot combination: ${key}`);
+            console.log(`[Dedup] 🟡 Skipped duplicate: ${key}`);
         }
     }
 
-    // 2. Fetch/Prepare Files (Mistake Fix #1 & #6)
-    // Safely appending files checking for existence
+    // 2. Build file list — safely checking existence
     const safeAppend = (folder, filename) => {
         const fullPath = path.join(LIBRARY, folder, filename);
         if (fs.existsSync(fullPath)) {
@@ -193,14 +245,14 @@ export async function assembleReport(formData, plots) {
         }
     };
 
-    // Constant static sections (Mistake Fix #1)
+    // Fixed sections
     safeAppend('01_Cover Page', 'cover.pptx');
     safeAppend('02_Table of Contents', 'toc.pptx');
     safeAppend('03_Project Background', 'project_background.pptx');
     safeAppend('04_Executive Summary', 'executive_summary.pptx');
     safeAppend('05_Site Assessment', 'site_assessment.pptx');
 
-    // Dynamic combinations from the Form Data & Plots (Mistake Fix #4 & #5)
+    // Varying sections — use " + " separator matching library filenames
     for (const plot of uniquePlots) {
         safeAppend('06_Market Overview', `${plot.fileKey}.pptx`);
     }
@@ -218,12 +270,12 @@ export async function assembleReport(formData, plots) {
     safeAppend('10_Financial & Investment Analysis', 'financial_investment_analysis.pptx');
     safeAppend('11_Disclaimer', 'disclaimer.pptx');
 
-    // 3. Merging files (Mistake Fix #3)
+    // 3. Merge
     if (filesToMerge.length === 0) {
-        throw new Error('No files gathered to merge! Check Library path and file existences.');
+        throw new Error('No files gathered to merge! Check Library path and file existence.');
     }
 
-    console.log(`\n[Merge Processor] Initiating merge on ${filesToMerge.length} files...`);
+    console.log(`\n[Merge] Initiating merge on ${filesToMerge.length} files...`);
     const finalPptxBuffer = await mergePptxFiles(filesToMerge);
 
     // 4. Save locally
@@ -235,7 +287,27 @@ export async function assembleReport(formData, plots) {
     const outputPath = path.join(outputDir, outputFile);
     fs.writeFileSync(outputPath, finalPptxBuffer);
 
-    console.log(`[Success] Final PPTX saved locally at: ${outputPath}`);
+    // 5. Replace placeholders
+    const projectName = formData?.title || formData?.projectName || 'Untitled';
+    const clientName = formData?.clientName || formData?.client_name || 'Confidential';
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    await replaceTokens(outputPath, {
+        '{{PROJECT_NAME}}': projectName,
+        '{{CLIENT_NAME}}': clientName,
+        '{{DATE}}': dateStr,
+        '{{Title}}': projectName,
+        '{{Subtitle}}': clientName,
+        '{{title}}': projectName,
+        '{{subtitle}}': clientName,
+        '{{project_name}}': projectName,
+        '{{client_name}}': clientName,
+        '{{TITLE}}': projectName,
+        '{{SUBTITLE}}': clientName,
+        '{{YEAR}}': new Date().getFullYear().toString(),
+    });
+
+    console.log(`[Success] Final PPTX saved at: ${outputPath}`);
 
     return { filePath: outputPath, fileName: outputFile };
 }

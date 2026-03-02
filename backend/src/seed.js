@@ -120,7 +120,7 @@ const seedData = async () => {
                     isVarying: false,
                     varyingCriteria: [],
                     folderPath: '07_Development Recommendations Part 1',
-                    filename: null
+                    filename: 'devrec_part1.pptx'
                 },
                 {
                     name: 'Development Recommendations Part 2',
@@ -136,7 +136,7 @@ const seedData = async () => {
                     isVarying: false,
                     varyingCriteria: [],
                     folderPath: '09_Development Recommendations Part 3',
-                    filename: null
+                    filename: 'devrec_part3.pptx'
                 },
                 {
                     name: 'Financial & Investment Analysis',
@@ -144,7 +144,7 @@ const seedData = async () => {
                     isVarying: false,
                     varyingCriteria: [],
                     folderPath: '10_Financial & Investment Analysis',
-                    filename: null
+                    filename: 'financial_investment_analysis.pptx'
                 },
                 {
                     name: 'Disclaimer',
@@ -158,8 +158,6 @@ const seedData = async () => {
             createdBy: admin._id,
             isActive: true
         });
-
-        console.log('✅ Feasibility Study created');
 
         console.log('✅ Feasibility Study created');
 
@@ -183,9 +181,7 @@ const seedData = async () => {
             createdBy: admin._id,
             isActive: true
         });
-        console.log('Credential Report created');
-
-        console.log('Feasibility Study created');
+        console.log('✅ Credential Report created');
 
         console.log('\nDatabase seeding completed successfully!\n');
         console.log('Admin Credentials:');

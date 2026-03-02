@@ -362,36 +362,49 @@ const deleteHistory = async (req, res, next) => {
  */
 const generateSelection = async (req, res, next) => {
     try {
-        // STEP 1: Get user input from frontend form
-        const {
-            city,              // "Mumbai"
-            projectType,       // "Residential"
-            requirements,      // ["Financial Analysis", "Market Analysis"]
-            companyName,
-            projectTitle
-        } = req.body;
+        const { presentationTypeId, typeId, type, formData = {}, plots = [] } = req.body;
+        const typeIdToUse = presentationTypeId || typeId || type;
 
-        console.log('User requested presentation for:', {
-            city,
-            projectType,
-            requirements
+        console.log('\n[GenerateSelection] Request received:', JSON.stringify(req.body, null, 2));
+
+        // Find presentation type
+        let presentationType;
+        if (typeIdToUse && typeIdToUse.match(/^[0-9a-fA-F]{24}$/)) {
+            try { presentationType = await PresentationType.findById(typeIdToUse); } catch (e) { }
+        }
+        if (!presentationType) {
+            presentationType = await PresentationType.findOne({ name: 'Feasibility Study' });
+        }
+
+        if (!presentationType) {
+            return res.status(404).json({ success: false, message: 'Presentation type not found' });
+        }
+
+        // Generate using the assembly engine (template-only, no AI)
+        const guestId = '000000000000000000000000';
+        const userId = req.user ? req.user._id : guestId;
+
+        const result = await assemblePresentation({
+            presentationType,
+            formData,
+            plots: plots || [],
+            userId
         });
 
-        // STEP 2: Select appropriate slides
-        const selectedSlides = selectSlides(city, requirements, projectType);
-
-        console.log(`Selected ${selectedSlides.length} slides:`,
-            selectedSlides.map(s => s.title)
-        );
-
-        // STEP 3: Return the selection
+        // Return generated file info
         res.json({
             success: true,
-            selectedSlides: selectedSlides,
-            totalSlides: selectedSlides.length
+            message: 'Presentation generated from templates',
+            data: {
+                fileName: result.fileName,
+                filePath: result.filePath,
+                slideCount: result.slideCount || 0,
+                fileSize: result.fileSize || 0
+            }
         });
 
     } catch (error) {
+        console.error('[GenerateSelection] Error:', error.message);
         next(error);
     }
 };
