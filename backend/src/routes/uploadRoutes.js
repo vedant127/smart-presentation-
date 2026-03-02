@@ -13,7 +13,6 @@ const router = express.Router();
  */
 
 // All routes require authentication and admin role
-// All routes require authentication and admin role
 // router.use(authenticate);
 // router.use(authorizeAdmin);
 
@@ -23,8 +22,8 @@ const router = express.Router();
 router.post('/', upload.single('file'), uploadFile);
 
 // @route   POST /api/upload/multiple
-// @desc    Upload multiple PPTX files
+// @desc    Upload multiple PPTX files (accepts any field name: cover, toc, financial_investment_analysis, etc.)
 // @access  Private (Admin)
-router.post('/multiple', upload.array('files', 10), uploadMultipleFiles);
+router.post('/multiple', upload.any(), uploadMultipleFiles);
 
 export default router;

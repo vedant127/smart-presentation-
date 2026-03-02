@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { apiUrl } from '@/lib/api';
 import { Loader2, Download, FileText, Plus, Trash2, CheckCircle2 } from 'lucide-react';
 
 export const DynamicGenerator = () => {
@@ -17,7 +18,7 @@ export const DynamicGenerator = () => {
 
     // 1. Fetch Types on Mount
     useEffect(() => {
-        axios.get('http://localhost:5000/api/presentation-types?isActive=true')
+        axios.get(apiUrl('presentation-types?isActive=true'))
             .then(res => setTypes(res.data.data.presentationTypes))
             .catch(console.error);
     }, []);
@@ -29,7 +30,7 @@ export const DynamicGenerator = () => {
             return;
         }
         setLoadingSchema(true);
-        axios.get(`http://localhost:5000/api/presentation-types/${selectedTypeId}/form-schema`)
+        axios.get(apiUrl(`presentation-types/${selectedTypeId}/form-schema`))
             .then(res => {
                 setSchema(res.data.data.formSchema);
                 // Reset form state
@@ -99,21 +100,14 @@ export const DynamicGenerator = () => {
         setSuccess(false);
 
         try {
-            // Prepare Enhanced Payload for AI Integration
+            // Build payload exactly as the backend expects
             const enhancedFormData = {
-                // Core fields
                 title: formData.title,
-                projectName: formData.title, // Alias for AI
+                projectName: formData.title,
                 subtitle: formData.subtitle,
                 clientName: formData.clientName || 'Confidential Client',
-
-                // Add all criteria as top-level fields for AI context
                 ...formData,
-
-                // Extract first plot data as global context if plots enabled
                 ...(schema.enablePlots && plots.length > 0 ? plots[0].data : {}),
-
-                // Metadata
                 plotCount: plots.length,
                 presentationType: schema.name
             };
@@ -123,63 +117,86 @@ export const DynamicGenerator = () => {
                 formData: enhancedFormData,
                 plots: schema.enablePlots ? plots.map(p => ({
                     criteria: p.data,
-                    data: p.data // Alias for compatibility
+                    data: p.data
                 })) : []
             };
 
-            console.log('🚀 Sending to backend:', payload);
+            console.log('🚀 Sending to backend:', JSON.stringify(payload, null, 2));
 
-            // Use create-download endpoint for direct download
+            // POST with blob response type + 120s timeout for large files
             const response = await axios.post(
-                'http://localhost:5000/api/presentations/create-download',
+                apiUrl('presentations/create-download'),
                 payload,
                 {
                     responseType: 'blob',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    timeout: 120000,
+                    headers: { 'Content-Type': 'application/json' },
                 }
             );
 
-            // Download the file
-            const url = window.URL.createObjectURL(new Blob([response.data]));
+            // Check if we got a JSON error disguised as a blob
+            const contentType = response.headers['content-type'] || '';
+            if (contentType.includes('application/json')) {
+                // Server returned a JSON error, not a PPTX file
+                const text = await response.data.text();
+                const errorData = JSON.parse(text);
+                throw new Error(errorData.message || 'Server returned an error');
+            }
+
+            // Create download from the blob
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            });
+
+            // Try to get filename from Content-Disposition header
+            let fileName = `${(formData.title || 'Presentation').replace(/\s+/g, '_')}_${Date.now()}.pptx`;
+            const disposition = response.headers['content-disposition'];
+            if (disposition) {
+                const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (match && match[1]) {
+                    fileName = match[1].replace(/['"]/g, '');
+                }
+            }
+
+            // Trigger browser download
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            const fileName = `${(formData.title || 'Presentation').replace(/\s+/g, '_')}_${Date.now()}.pptx`;
             link.setAttribute('download', fileName);
             document.body.appendChild(link);
             link.click();
             link.remove();
-
-            // Cleanup
             window.URL.revokeObjectURL(url);
-            setSuccess(true);
 
-            // Show success message
-            alert(`✅ Success! Your presentation "${formData.title}" has been generated and downloaded!`);
+            setSuccess(true);
+            console.log(`✅ Download started: ${fileName} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
 
         } catch (err: any) {
-            console.error("Presentation Generation Error:", err);
+            console.error('Presentation Generation Error:', err);
 
-            // If response is a Blob (because we asked for one), we need to parse it to see the JSON error
+            let errorMessage = 'Unknown error occurred';
+
             if (err.response && err.response.data instanceof Blob) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    try {
-                        const errorJson = JSON.parse(reader.result as string);
-                        alert(`Generation Failed: ${errorJson.message || 'Unknown Error'}\n\nCheck the browser console for details.`);
-                    } catch (e) {
-                        alert("Generation Failed: Internal Server Error\n\nCheck the backend console logs for details.");
-                    }
-                };
-                reader.readAsText(err.response.data);
-            } else {
-                alert(`Generation Failed: ${err.message || 'Network Error'}\n\nMake sure the backend server is running on http://localhost:5000`);
+                // Error came back as blob (because responseType: 'blob')
+                try {
+                    const text = await err.response.data.text();
+                    const errorJson = JSON.parse(text);
+                    errorMessage = errorJson.message || 'Generation failed';
+                } catch {
+                    errorMessage = `Server error (HTTP ${err.response.status})`;
+                }
+            } else if (err.response?.data?.message) {
+                errorMessage = err.response.data.message;
+            } else if (err.message) {
+                errorMessage = err.message;
             }
+
+            alert(`Generation Failed: ${errorMessage}`);
         } finally {
             setIsGenerating(false);
         }
     };
+
 
     // --- Renderers ---
 

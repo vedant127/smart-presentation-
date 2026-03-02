@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { apiUrl } from '@/lib/api';
 import { Search, Database, FileText, Check, Tag } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -24,7 +25,7 @@ export const DataManager = () => {
     // Initialization
     useEffect(() => {
         // Fetch Feasibility Study type to get options
-        axios.get('http://localhost:5000/api/presentation-types?isActive=true')
+        axios.get(apiUrl('presentation-types?isActive=true'))
             .then(res => {
                 const types = res.data.data.presentationTypes;
                 const feasibility = types.find((t: any) => t.name === 'Feasibility Study');
@@ -67,7 +68,7 @@ export const DataManager = () => {
 
         setLoading(true);
         try {
-            const res = await axios.post('http://localhost:5000/api/templates/match', {
+            const res = await axios.post(apiUrl('templates/match'), {
                 city: selectedCity,
                 assetType: selectedProjectType
             });
@@ -113,7 +114,7 @@ export const DataManager = () => {
                 }
             };
 
-            const response = await axios.post('http://localhost:5000/api/presentations/create-download', payload, {
+            const response = await axios.post(apiUrl('presentations/create-download'), payload, {
                 responseType: 'blob' // Important for file download
             });
 

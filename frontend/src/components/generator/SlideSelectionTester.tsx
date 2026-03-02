@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import axios from 'axios';
+import { apiUrl } from '@/lib/api';
 import { Search, CheckCircle2, ListFilter, Building2, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -29,7 +30,7 @@ export const SlideSelectionTester = () => {
 
     // Fetch types on mount
     React.useEffect(() => {
-        axios.get('http://localhost:5000/api/presentation-types?isActive=true')
+        axios.get(apiUrl('presentation-types?isActive=true'))
             .then(res => {
                 const fetchedTypes = res.data.data.presentationTypes;
                 setTypes(fetchedTypes);
@@ -46,7 +47,7 @@ export const SlideSelectionTester = () => {
     React.useEffect(() => {
         if (!selectedTypeId) return;
 
-        axios.get(`http://localhost:5000/api/presentation-types/${selectedTypeId}/form-schema`)
+        axios.get(apiUrl(`presentation-types/${selectedTypeId}/form-schema`))
             .then(res => {
                 const criteria = res.data.data.formSchema.criteria;
 
@@ -75,7 +76,7 @@ export const SlideSelectionTester = () => {
     const handleTestSelection = async () => {
         setLoading(true);
         try {
-            const response = await axios.post('http://localhost:5000/api/templates/match', {
+            const response = await axios.post(apiUrl('templates/match'), {
                 city,
                 assetType: projectType,
                 // Pass extra context if needed by backend matchTemplate
@@ -109,7 +110,7 @@ export const SlideSelectionTester = () => {
                 plots: []
             };
 
-            const response = await axios.post('http://localhost:5000/api/presentations/create-download', payload, {
+            const response = await axios.post(apiUrl('presentations/create-download'), payload, {
                 responseType: 'blob',
             });
 

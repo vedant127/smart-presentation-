@@ -10,17 +10,20 @@ import PizZip from 'pizzip';
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ─── Plot Key ────────────────────────────────────────────────────────────────
-// Format: "city + asset type + category + specs" (matches library filenames)
+// Format: "city_asset_category_specs" (matches actual library filenames)
+function normalizeValue(val) {
+    if (!val) return '';
+    return val.trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_').replace(/[^a-z0-9_]/g, '');
+}
+
 function makePlotKey(plot) {
-    return [
-        plot.city || plot.City || '',
-        plot.assetType || plot['Asset Type'] || plot.asset_type || '',
-        plot.category || plot.Category || '',
-        plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
-    ]
-        .map(s => s.trim())
-        .join(' + ')
-        .toLowerCase();
+    const city = plot.city || plot.City || '';
+    const asset = plot.assetType || plot['Asset Type'] || plot.asset_type || plot['asset type'] || plot.asset || '';
+    const cat = plot.category || plot.Category || '';
+    const spec = plot.specs || plot.specifications || plot.Specifications || plot.Specification || plot.spec || '';
+    const key = [city, asset, cat, spec].map(normalizeValue).filter(s => s.length > 0).join('_');
+    console.log(`   [Key] "${key}.pptx" (city="${city}" asset="${asset}" cat="${cat}" spec="${spec}")`);
+    return key;
 }
 
 function getUniquePlots(plots) {

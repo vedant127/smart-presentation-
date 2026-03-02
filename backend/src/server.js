@@ -39,16 +39,20 @@ const config = {
 // Initialize Express app
 const app = express();
 
-// Middleware
-app.use(cors({
-    origin: (origin, callback) => {
-        // Allow all origins in development
-        callback(null, true);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// ─── CORS (MUST be before all routes) ────────────────────────────────────────
+// This fixes: "Failed to load response data" + preflight (OPTIONS) failures
+const corsOptions = {
+    origin: true,                      // reflect requesting origin (allows localhost:5173, etc.)
+    credentials: true,                 // allow cookies/auth headers
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type'], // ← CRITICAL for file downloads
+    maxAge: 86400,                     // cache preflight for 24h
+};
+app.use(cors(corsOptions));
+
+// Handle ALL preflight OPTIONS requests explicitly
+app.options('*', cors(corsOptions));
 
 // Request logging (only in development)
 if (process.env.NODE_ENV !== 'production') {
@@ -61,8 +65,8 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Health check route
 app.get('/health', (req, res) => {

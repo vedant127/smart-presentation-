@@ -1,96 +1,92 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
-import { Download, FileText, Layers, Loader2 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { apiUrl } from '@/lib/api';
+import { Download, FileText, Layers, Loader2, Plus, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// ─── STATIC OPTIONS derived from library filenames ────────────────────────────
+// These MUST match the normalization map in presentationServiceEnhanced.js
+const CITY_OPTIONS = ['Abu Dhabi', 'Dubai', 'Riyadh', 'Jeddah'];
+
+const ASSET_TYPES = ['Hotels', 'Residential', 'Office', 'Retail'];
+
+// Per-asset-type sub-options
+const CATEGORY_OPTIONS: Record<string, string[]> = {
+    Hotels: ['3-star', '4-star', '5-star'],
+    Residential: ['Apartments', 'Villas', 'Townhouses'],
+    Office: ['Grade A', 'Grade B'],
+    Retail: ['Grade A', 'Grade B'],
+};
+
+const SPECS_OPTIONS: Record<string, string[]> = {
+    Hotels: ['Business', 'City', 'Leisure', 'Beach Resort'],
+    Residential: ['Luxury', 'High End', 'Upper Mid End', 'Mid End', 'Low End', 'Affordable', 'Social'],
+    Office: ['High Rise', 'Mid Rise', 'Low Rise', 'Business Park'],
+    Retail: ['Regional Mall', 'Small Regional Mall', 'Community Mall', 'Neighbourhood Center', 'Convenience Center'],
+};
+
+interface Plot {
+    city: string;
+    assetType: string;
+    category: string;
+    specs: string;
+}
+
+const defaultPlot = (): Plot => ({
+    city: 'Dubai',
+    assetType: 'Hotels',
+    category: '5-star',
+    specs: 'Business',
+});
 
 export const PresentationGenerator = () => {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [presentationType] = useState('Feasibility Study');
 
-    // Presentation Type State
-    const [presentationType, setPresentationType] = useState("Feasibility Study");
-    const [plotCount, setPlotCount] = useState(1);
-
-    // Plots State
-    const [plots, setPlots] = useState([
-        { city: 'Abu Dhabi', assetType: 'Hotels', category: '5-star', specs: 'Business' }
-    ]);
+    const [plots, setPlots] = useState<Plot[]>([defaultPlot()]);
 
     const [formData, setFormData] = useState({
         title: '',
-        subtitle: ''
+        subtitle: '',
     });
 
-    // Dynamic Options State
-    const [criteriaOptions, setCriteriaOptions] = useState<Record<string, string[]>>({});
-
-    // Fetch Standard Type Schema on Mount or Type Change
-    useEffect(() => {
-        // First get the Type ID for 'Feasibility Study' (or selected type)
-        axios.get('http://localhost:5000/api/presentation-types?isActive=true')
-            .then(res => {
-                const types = res.data.data.presentationTypes;
-                const target = types.find((t: any) => t.name === presentationType) || types[0];
-                if (target) {
-                    // Fetch Schema
-                    axios.get(`http://localhost:5000/api/presentation-types/${target._id}/form-schema`)
-                        .then(schemaRes => {
-                            const criteria = schemaRes.data.data.formSchema.criteria;
-                            const optionsMap: Record<string, string[]> = {};
-
-                            criteria.forEach((c: any) => {
-                                optionsMap[c.name] = c.options || [];
-                            });
-                            setCriteriaOptions(optionsMap);
-                        })
-                        .catch(console.error);
-                }
-            })
-            .catch(console.error);
-    }, [presentationType]);
-
-    // Helper to get options for a field (case-insensitive safe)
-    const getOptions = (fieldName: string) => {
-        const key = Object.keys(criteriaOptions).find(k => k.toLowerCase() === fieldName.toLowerCase());
-        return key ? criteriaOptions[key] : [];
-    };
-
-    // Handle Title/Subtitle Change
     const handleBasicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    // Handle Plot Count Change
-    const handlePlotCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const count = parseInt(e.target.value) || 1;
-        setPlotCount(count);
-
-        // Adjust plots array size
+    const handlePlotChange = (index: number, field: keyof Plot, value: string) => {
         const newPlots = [...plots];
-        if (count > newPlots.length) {
-            // Add new plots
-            for (let i = newPlots.length; i < count; i++) {
-                newPlots.push({ city: 'Abu Dhabi', assetType: 'Hotels', category: '5-star', specs: 'Business' });
-            }
-        } else if (count < newPlots.length) {
-            // Remove plots
-            newPlots.splice(count);
+        const updated = { ...newPlots[index], [field]: value };
+        // Reset dependent fields when assetType changes
+        if (field === 'assetType') {
+            updated.category = CATEGORY_OPTIONS[value]?.[0] || '';
+            updated.specs = SPECS_OPTIONS[value]?.[0] || '';
         }
+        newPlots[index] = updated;
         setPlots(newPlots);
     };
 
-    // Handle Individual Plot Change
-    const handlePlotChange = (index: number, field: string, value: string) => {
-        const newPlots = [...plots];
-        newPlots[index] = { ...newPlots[index], [field]: value };
-        setPlots(newPlots);
+    const addPlot = () => {
+        if (plots.length < 5) setPlots([...plots, defaultPlot()]);
+    };
+
+    const removePlot = (index: number) => {
+        if (plots.length > 1) setPlots(plots.filter((_, i) => i !== index));
     };
 
     const handleGenerate = async () => {
-        if (!formData.title) {
-            alert("Please enter a project title");
+        if (!formData.title.trim()) {
+            alert('Please enter a project title');
             return;
+        }
+        for (let i = 0; i < plots.length; i++) {
+            const p = plots[i];
+            if (!p.city || !p.assetType || !p.category || !p.specs) {
+                alert(`Plot ${i + 1}: Please fill in all fields (City, Asset Type, Category, Specs)`);
+                return;
+            }
         }
 
         setLoading(true);
@@ -98,33 +94,48 @@ export const PresentationGenerator = () => {
 
         try {
             const payload = {
-                // Hardcoded ID for Feasibility Study or dynamic if we had an API for types
-                presentationTypeId: "6983212564c7c90809f1ffa3", // Ideally fetch this ID dynamically too
                 type: presentationType,
                 formData: {
                     title: formData.title,
-                    subtitle: formData.subtitle
+                    subtitle: formData.subtitle,
                 },
-                plots: plots // Send the detailed plots array
+                plots,
             };
 
-            const response = await axios.post('http://localhost:5000/api/presentations/create-download', payload, {
+            console.log('[Generate] Sending payload:', JSON.stringify(payload, null, 2));
+
+            const response = await axios.post(apiUrl('presentations/create-download'), payload, {
                 responseType: 'blob',
+                timeout: 120000, // 2 min timeout for large merges
             });
 
-            // Create download link
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `${formData.title.replace(/\s+/g, '_')}_${presentationType.replace(/\s+/g, '_')}.pptx`);
+            link.setAttribute(
+                'download',
+                `${formData.title.replace(/\s+/g, '_')}_${presentationType.replace(/\s+/g, '_')}.pptx`
+            );
             document.body.appendChild(link);
             link.click();
             link.remove();
+            window.URL.revokeObjectURL(url);
 
             setSuccess(true);
-        } catch (err) {
-            console.error(err);
-            alert("Presentation generation failed. Is the backend running?");
+        } catch (err: any) {
+            console.error('[Generate] Error:', err);
+            if (err.response) {
+                // Try to read blob error
+                try {
+                    const text = await err.response.data.text();
+                    const parsed = JSON.parse(text);
+                    alert(`Error: ${parsed.message || 'Generation failed'}`);
+                } catch {
+                    alert('Presentation generation failed. Check backend logs.');
+                }
+            } else {
+                alert('Presentation generation failed. Is the backend running?');
+            }
         } finally {
             setLoading(false);
         }
@@ -132,13 +143,18 @@ export const PresentationGenerator = () => {
 
     if (success) {
         return (
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="max-w-xl mx-auto mt-10 p-8 bg-surface rounded-2xl border border-secondary/20 text-center shadow-2xl">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="max-w-xl mx-auto mt-10 p-8 bg-surface rounded-2xl border border-secondary/20 text-center shadow-2xl"
+            >
                 <div className="w-20 h-20 bg-secondary/20 rounded-full flex items-center justify-center mx-auto mb-6">
                     <Download className="text-secondary w-10 h-10" />
                 </div>
                 <h2 className="text-3xl font-bold text-white mb-2">Presentation Ready!</h2>
-                <p className="text-slate-400 mb-8">Your {presentationType} has been downloaded successfully.</p>
-
+                <p className="text-slate-400 mb-8">
+                    Your {presentationType} has been downloaded successfully.
+                </p>
                 <button
                     onClick={() => setSuccess(false)}
                     className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
@@ -156,6 +172,7 @@ export const PresentationGenerator = () => {
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-surface/50 backdrop-blur-xl border border-slate-700/50 p-8 rounded-3xl shadow-xl"
             >
+                {/* Header */}
                 <div className="flex items-center gap-4 mb-8">
                     <div className="p-3 bg-primary/20 rounded-xl">
                         <FileText className="text-primary w-8 h-8" />
@@ -170,7 +187,9 @@ export const PresentationGenerator = () => {
                     {/* Basic Info */}
                     <div className="grid grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">Project Title</label>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                Project Title <span className="text-red-400">*</span>
+                            </label>
                             <input
                                 type="text"
                                 name="title"
@@ -193,101 +212,152 @@ export const PresentationGenerator = () => {
                         </div>
                     </div>
 
-                    {/* Global Settings */}
-                    <div className="grid grid-cols-2 gap-6 bg-slate-800/30 p-6 rounded-2xl border border-slate-700/30">
+                    {/* Presentation Type Info */}
+                    <div className="flex items-center gap-3 bg-slate-800/30 px-5 py-3 rounded-xl border border-slate-700/30">
+                        <Layers className="text-primary w-5 h-5 flex-shrink-0" />
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
-                                <Layers className="w-4 h-4" /> Presentation Type
-                            </label>
-                            <select
-                                value={presentationType}
-                                onChange={(e) => setPresentationType(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                            >
-                                <option>Feasibility Study</option>
-                                <option>Market Research</option>
-                                <option>Investment Teaser</option>
-                            </select>
+                            <span className="text-sm font-medium text-slate-300">Presentation Type: </span>
+                            <span className="text-sm font-bold text-white">{presentationType}</span>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
-                                <Layers className="w-4 h-4" /> Number of Plots
-                            </label>
-                            <input
-                                type="number"
-                                min={1}
-                                max={10}
-                                value={plotCount}
-                                onChange={handlePlotCountChange}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                            />
+                        <div className="ml-auto text-xs text-slate-500 bg-slate-900/50 px-2 py-1 rounded">
+                            Max 11 Slides
                         </div>
                     </div>
 
                     {/* Dynamic Plots */}
                     <div className="space-y-4">
-                        <label className="block text-lg font-semibold text-white">Plot Details</label>
-                        {plots.map((plot, index) => (
-                            <div key={index} className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50 relative">
-                                <div className="absolute top-4 right-4 text-xs font-bold text-slate-500 bg-slate-900 px-2 py-1 rounded">
-                                    PLOT {index + 1}
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    {/* City */}
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-400 mb-1">City</label>
-                                        <select
-                                            value={plot.city}
-                                            onChange={(e) => handlePlotChange(index, 'city', e.target.value)}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                        >
-                                            <option value="">Select City</option>
-                                            {getOptions('City').map(opt => <option key={opt}>{opt}</option>)}
-                                            {getOptions('City').length === 0 && <option>Loading...</option>}
-                                        </select>
+                        <div className="flex items-center justify-between">
+                            <label className="text-lg font-semibold text-white">
+                                Plot Details
+                                <span className="text-sm font-normal text-slate-400 ml-2">
+                                    ({plots.length}/5 — each plot generates market + dev sections)
+                                </span>
+                            </label>
+                            {plots.length < 5 && (
+                                <button
+                                    onClick={addPlot}
+                                    className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+                                >
+                                    <Plus className="w-4 h-4" /> Add Plot
+                                </button>
+                            )}
+                        </div>
+
+                        <AnimatePresence>
+                            {plots.map((plot, index) => (
+                                <motion.div
+                                    key={index}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="bg-slate-800/50 p-6 rounded-2xl border border-slate-700/50 relative"
+                                >
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-xs font-bold text-slate-400 bg-slate-900 px-2 py-1 rounded">
+                                            PLOT {index + 1}
+                                        </span>
+                                        {plots.length > 1 && (
+                                            <button
+                                                onClick={() => removePlot(index)}
+                                                className="text-slate-500 hover:text-red-400 transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
                                     </div>
-                                    {/* Asset Type */}
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-400 mb-1">Asset Type</label>
-                                        <select
-                                            value={plot.assetType}
-                                            onChange={(e) => handlePlotChange(index, 'assetType', e.target.value)}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                        >
-                                            <option value="">Select Type</option>
-                                            {getOptions('Asset Type').map(opt => <option key={opt}>{opt}</option>)}
-                                        </select>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {/* City */}
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                                                City <span className="text-red-400">*</span>
+                                            </label>
+                                            <select
+                                                value={plot.city}
+                                                onChange={(e) => handlePlotChange(index, 'city', e.target.value)}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                            >
+                                                <option value="">Select City</option>
+                                                {CITY_OPTIONS.map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Asset Type */}
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                                                Asset Type <span className="text-red-400">*</span>
+                                            </label>
+                                            <select
+                                                value={plot.assetType}
+                                                onChange={(e) => handlePlotChange(index, 'assetType', e.target.value)}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                            >
+                                                <option value="">Select Asset Type</option>
+                                                {ASSET_TYPES.map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Category */}
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                                                Category <span className="text-red-400">*</span>
+                                            </label>
+                                            <select
+                                                value={plot.category}
+                                                onChange={(e) => handlePlotChange(index, 'category', e.target.value)}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                            >
+                                                <option value="">Select Category</option>
+                                                {(CATEGORY_OPTIONS[plot.assetType] || []).map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Specs */}
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">
+                                                Specs / Type <span className="text-red-400">*</span>
+                                            </label>
+                                            <select
+                                                value={plot.specs}
+                                                onChange={(e) => handlePlotChange(index, 'specs', e.target.value)}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                            >
+                                                <option value="">Select Specs</option>
+                                                {(SPECS_OPTIONS[plot.assetType] || []).map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
-                                    {/* Category */}
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-400 mb-1">Category</label>
-                                        <select
-                                            value={plot.category}
-                                            onChange={(e) => handlePlotChange(index, 'category', e.target.value)}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                        >
-                                            <option value="">Select Category</option>
-                                            {getOptions('Category').map(opt => <option key={opt}>{opt}</option>)}
-                                        </select>
-                                    </div>
-                                    {/* Specs */}
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-400 mb-1">Specs</label>
-                                        <select
-                                            value={plot.specs}
-                                            onChange={(e) => handlePlotChange(index, 'specs', e.target.value)}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                        >
-                                            <option value="">Select Specs</option>
-                                            {getOptions('Specifications').map(opt => <option key={opt}>{opt}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+
+                                    {/* Key Preview */}
+                                    {plot.city && plot.assetType && plot.category && plot.specs && (
+                                        <div className="mt-3 px-3 py-2 bg-slate-900/70 rounded-lg border border-slate-700/30">
+                                            <span className="text-xs text-slate-500">Library key: </span>
+                                            <span className="text-xs text-primary font-mono">
+                                                {[
+                                                    plot.city.toLowerCase().replace(/\s+/g, '_'),
+                                                    plot.assetType === 'Hotels' ? 'hotel' :
+                                                        plot.assetType === 'Residential' ? 'residential' :
+                                                            plot.assetType === 'Office' ? 'office' : 'retail',
+                                                    plot.category.toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, ''),
+                                                    plot.specs.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
+                                                ].join('_')}
+                                            </span>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
                     </div>
 
-                    {/* Button */}
+                    {/* Generate Button */}
                     <button
                         onClick={handleGenerate}
                         disabled={loading}
@@ -295,15 +365,14 @@ export const PresentationGenerator = () => {
                         ${loading
                                 ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                                 : 'bg-gradient-to-r from-primary to-indigo-600 text-white hover:scale-[1.02] hover:shadow-xl'
-                            }
-                    `}
+                            }`}
                     >
                         {loading ? (
                             <span className="flex items-center justify-center gap-2">
                                 <Loader2 className="animate-spin" /> Assembling Presentation...
                             </span>
                         ) : (
-                            "Generate & Download PPTX"
+                            'Generate & Download PPTX'
                         )}
                     </button>
                 </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { apiUrl } from '@/lib/api';
 import { Plus, Edit, Trash2, Settings, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -24,7 +25,7 @@ export const AdminDashboard = () => {
 
     const fetchTypes = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/presentation-types');
+            const res = await axios.get(apiUrl('presentation-types'));
             setTypes(res.data.data.presentationTypes);
         } catch (err) {
             console.error(err);
@@ -36,7 +37,7 @@ export const AdminDashboard = () => {
     const handleDelete = async (id: string) => {
         if (!window.confirm("Are you sure? This cannot be undone.")) return;
         try {
-            await axios.delete(`http://localhost:5000/api/presentation-types/${id}`);
+            await axios.delete(apiUrl(`presentation-types/${id}`));
             fetchTypes(); // Refresh
         } catch (err) {
             alert("Failed to delete");

@@ -18,6 +18,8 @@ export interface Section {
   order: number;
   varying: boolean;
   varyingCriteria?: string[]; // criteria IDs that drive variation
+  folderPath?: string;
+  filename?: string | null;
 }
 
 export interface PresentationType {

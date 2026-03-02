@@ -10,25 +10,27 @@ import PizZip from 'pizzip';
 //  Same logic as presentationServiceEnhanced.js
 // ══════════════════════════════════════════════════════════════════════════════
 
-function makePlotKey(plot) {
-    return [
-        plot.city || plot.City || '',
-        plot.assetType || plot['Asset Type'] || plot.asset_type || '',
-        plot.category || plot.Category || '',
-        plot.specs || plot.specifications || plot.Specifications || plot.spec || '',
-    ]
-        .map(s => s.trim())
-        .join(' + ')
-        .toLowerCase();
+// Build key: city_asset_type_category_specifications (underscore, lowercase, trim)
+// Matches filenames like abu_dhabi_hotel_small_regional_mall_city.pptx
+function buildKey(criteria) {
+    if (!criteria || typeof criteria !== 'object') return '';
+    const parts = [
+        criteria.City || criteria.city || '',
+        criteria['Asset Type'] || criteria.assetType || criteria.asset_type || '',
+        criteria.Category || criteria.category || '',
+        criteria.Specifications || criteria.specifications || criteria.specs || criteria.spec || '',
+    ].map(s => String(s || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_'));
+    return parts.filter(s => s.length > 0).join('_');
 }
 
-function getUniquePlots(plots) {
-    const seen = new Map();
-    for (const plot of plots) {
-        const key = makePlotKey(plot);
-        if (!seen.has(key)) seen.set(key, plot);
+function getUniqueKeys(plots) {
+    const uniqueKeys = new Set();
+    for (const plot of plots || []) {
+        const criteria = plot.criteria || plot.data || plot;
+        const key = buildKey(criteria);
+        if (key) uniqueKeys.add(key);
     }
-    return Array.from(seen.values());
+    return Array.from(uniqueKeys);
 }
 
 function countSlides(filePath) {
@@ -44,22 +46,23 @@ function countSlidesInZip(zip) {
         .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
 }
 
-function getLibraryPath() {
+function getLibraryPath(typeName = 'Feasibility Study') {
     const cwd = process.cwd();
     const __dirname = path.dirname(new URL(import.meta.url).pathname);
+    const libRoot = path.join(cwd, 'Library');
     const candidates = [
+        path.join(cwd, 'Library', typeName),
+        path.join(cwd, '..', 'Library', typeName),
+        path.join(cwd, 'src', 'Library', typeName),
+        path.join(__dirname, '..', '..', 'Library', typeName),
         path.join(cwd, 'Library', 'Feasibility Study'),
         path.join(cwd, '..', 'Library', 'Feasibility Study'),
-        path.join(cwd, 'src', 'Library', 'Feasibility Study'),
-        path.join(__dirname, '..', 'Library', 'Feasibility Study'),
-        path.join(__dirname, '..', '..', 'Library', 'Feasibility Study'),
-        path.join(cwd, 'Library', 'feasibility_study'),
-        path.join(cwd, '..', 'Library', 'feasibility_study'),
     ];
     for (const p of candidates) {
         if (fs.existsSync(p)) return p;
     }
-    throw new Error(`Library folder not found!`);
+    if (fs.existsSync(libRoot)) return path.join(libRoot, typeName);
+    throw new Error(`Library folder not found for type: ${typeName}`);
 }
 
 // ─── Bulletproof Merge ───────────────────────────────────────────────────────
@@ -199,35 +202,83 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     console.log('  ASSEMBLY START (v5 — Bulletproof Merge)');
     console.log('══════════════════════════════════════════');
 
-    const LIBRARY = getLibraryPath();
-    const rawPlots = (plots && plots.length > 0) ? plots.map(p => p.criteria || p.data || p) : [formData];
-    const uniquePlots = getUniquePlots(rawPlots);
+    // ─── Debug: raw plots from request ───────────────────────────────────────
+    console.log('FULL BODY PLOTS RECEIVED:', JSON.stringify(plots, null, 2));
+    console.log('Number of plots:', plots?.length || 0);
+
+    const typeName = presentationType?.name || 'Feasibility Study';
+    const templateDir = getLibraryPath(typeName);
+
+    // ─── 1. Loop over plots, build keys, collect UNIQUE keys only ─────────────
+    const uniqueKeys = getUniqueKeys(plots || []);
+    if (plots?.length > 0) {
+        plots.forEach((plot, i) => {
+            const criteria = plot.criteria || plot.data || plot;
+            const key = buildKey(criteria);
+            console.log(`Plot ${i + 1} raw criteria:`, JSON.stringify(criteria, null, 2));
+            console.log(`Plot ${i + 1} generated key:`, key || 'NULL_OR_EMPTY');
+        });
+    }
+    console.log('Unique keys:', uniqueKeys);
 
     const files = [];
+
     function addFixed(folder, filename, label) {
-        const p = path.join(LIBRARY, folder, filename);
-        if (fs.existsSync(p)) { files.push(p); console.log(`  ✅ ${label}`); }
-        else console.warn(`  ❌ MISSING: ${label} → ${p}`);
-    }
-    function addVarying(folder, plot, label) {
-        const k = makePlotKey(plot); const p = path.join(LIBRARY, folder, `${k}.pptx`);
-        if (fs.existsSync(p)) { files.push(p); console.log(`  ✅ ${label} [${k}]`); }
-        else console.warn(`  ❌ MISSING: ${label} [${k}]`);
+        const p = path.join(templateDir, folder, filename);
+        if (fs.existsSync(p)) {
+            const slideCount = countSlides(p);
+            files.push(p);
+            console.log(`  ✅ ${label} → ${filename} (${slideCount} slides)`);
+        } else {
+            console.warn(`  ❌ MISSING: ${label} → ${p}`);
+        }
     }
 
-    addFixed('01_Cover Page', 'cover.pptx', 'Cover Page');
-    addFixed('02_Table of Contents', 'toc.pptx', 'Table of Contents');
-    addFixed('03_Project Background', 'project_background.pptx', 'Project Background');
-    addFixed('04_Executive Summary', 'executive_summary.pptx', 'Executive Summary');
-    addFixed('05_Site Assessment', 'site_assessment.pptx', 'Site Assessment');
-    for (const plot of uniquePlots) addVarying('06_Market Overview', plot, 'Market Overview');
-    addFixed('07_Development Recommendations Part 1', 'devrec_part1.pptx', 'Dev Recs Part 1');
-    for (const plot of uniquePlots) addVarying('08_Development Recommendations Part 2', plot, 'Dev Recs Part 2');
-    for (const plot of uniquePlots) addVarying('09_Development Recommendations Part 3', plot, 'Dev Recs Part 3');
-    addFixed('10_Financial & Investment Analysis', 'financial_investment_analysis.pptx', 'Financial Analysis');
-    addFixed('11_Disclaimer', 'disclaimer.pptx', 'Disclaimer');
+    function addVarying(folder, key, label) {
+        const filename = `${key}.pptx`;
+        const fullPath = path.join(templateDir, folder, filename);
+        if (fs.existsSync(fullPath)) {
+            const slideCount = countSlides(fullPath);
+            files.push(fullPath);
+            console.log(`  ✅ ${label} [${filename}] FOUND & LOADED (${slideCount} slides)`);
+        } else {
+            console.log(`  ❌ MISSING file → skip: ${filename} (path: ${fullPath})`);
+        }
+    }
+
+    // Use DB sections when available, else fallback to Feasibility Study defaults
+    const sections = presentationType?.sections?.length > 0
+        ? [...presentationType.sections].sort((a, b) => (a.order || 0) - (b.order || 0))
+        : [
+            { folderPath: '01_Cover Page', filename: 'cover.pptx', isVarying: false },
+            { folderPath: '02_Table of Contents', filename: 'toc.pptx', isVarying: false },
+            { folderPath: '03_Project Background', filename: 'project_background.pptx', isVarying: false },
+            { folderPath: '04_Executive Summary', filename: 'executive_summary.pptx', isVarying: false },
+            { folderPath: '05_Site Assessment', filename: 'site_assessment.pptx', isVarying: false },
+            { folderPath: '06_Market Overview', filename: null, isVarying: true },
+            { folderPath: '07_Development Recommendations Part 1', filename: 'devrec_part1.pptx', isVarying: false },
+            { folderPath: '08_Development Recommendations Part 2', filename: null, isVarying: true },
+            { folderPath: '09_Development Recommendations Part 3', filename: 'devrec_part3.pptx', isVarying: false },
+            { folderPath: '10_Financial & Investment Analysis', filename: 'financial_investment_analysis.pptx', isVarying: false },
+            { folderPath: '11_Disclaimer', filename: 'disclaimer.pptx', isVarying: false },
+        ];
+
+    for (const sec of sections) {
+        const folder = sec.folderPath || sec.folder;
+        const label = sec.name || folder;
+        if (sec.isVarying && !sec.filename) {
+            for (const key of uniqueKeys) {
+                addVarying(folder, key, label);
+            }
+        } else {
+            const filename = sec.filename || `${(sec.name || folder).toLowerCase().replace(/\s+/g, '_')}.pptx`;
+            addFixed(folder, filename, label);
+        }
+    }
 
     if (files.length === 0) throw new Error('No Library files found!');
+
+    console.log(`\n  Files to merge (${files.length}):`, files.map(f => path.basename(f)).join(', '));
 
     const mergedBuffer = await mergePptxFiles(files);
     const outputDir = path.join(process.cwd(), 'generated');

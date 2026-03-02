@@ -431,7 +431,7 @@ export {
 const createAndDownload = async (req, res, next) => {
     try {
         let { presentationTypeId, typeId, type, formData, plots } = req.body;
-        // Alias support
+        // Alias support — accept ObjectId, or the type name string directly
         presentationTypeId = presentationTypeId || typeId || type;
 
         // Ensure formData exists
@@ -441,35 +441,30 @@ const createAndDownload = async (req, res, next) => {
         if (req.body.project_name) formData.projectTitle = req.body.project_name;
         if (req.body.client_name) formData.clientName = req.body.client_name;
 
-        // Validate required fields
         if (!presentationTypeId) {
             return res.status(400).json({
                 success: false,
-                message: 'Presentation type ID is required'
+                message: 'Presentation type (ID or name) is required'
             });
         }
 
-        // Prevent 500 crash for invalid ID
-        const mongoose = await import('mongoose');
-        if (!mongoose.default.isValidObjectId(presentationTypeId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid Presentation Type ID format'
-            });
-        }
-
-        // Get presentation type (Smart Search)
+        // Get presentation type — supports both MongoDB ObjectId and name string
         let presentationType;
+        const mongoose = await import('mongoose');
 
-        // 1. Try ID
-        if (presentationTypeId && presentationTypeId.match(/^[0-9a-fA-F]{24}$/)) {
+        // 1. Try as ObjectId
+        if (mongoose.default.isValidObjectId(presentationTypeId) && /^[0-9a-fA-F]{24}$/.test(presentationTypeId)) {
             try { presentationType = await PresentationType.findById(presentationTypeId); } catch (e) { }
         }
 
-        // 2. Fallback: Search by Name (Feasibility Study) if missing
+        // 2. Try as exact name string (e.g. "Feasibility Study")
+        if (!presentationType && typeof presentationTypeId === 'string') {
+            presentationType = await PresentationType.findOne({ name: presentationTypeId });
+        }
+
+        // 3. Fallback: guess from form data content
         if (!presentationType) {
-            console.log(`⚠️ [CreateDownload] Presentation Type ID "${presentationTypeId}" not found. Searching by name...`);
-            // Check form data for clues
+            console.log(`⚠️ [CreateDownload] "${presentationTypeId}" not found as ID or name. Guessing from form...`);
             const formTitle = (formData.subtitle || formData.title || '').toLowerCase();
 
             if (formTitle.includes('feasibility')) {
@@ -477,7 +472,7 @@ const createAndDownload = async (req, res, next) => {
             } else if (formTitle.includes('credential')) {
                 presentationType = await PresentationType.findOne({ name: 'Credential Report' });
             } else {
-                // Last ditch: Default to Feasibility Study
+                // Default
                 presentationType = await PresentationType.findOne({ name: 'Feasibility Study' });
             }
         }

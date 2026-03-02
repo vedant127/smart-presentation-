@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { apiUrl } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, X, Layers, ListFilter, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -19,7 +20,7 @@ export const TypeBuilder = () => {
 
     useEffect(() => {
         if (isEdit) {
-            axios.get(`http://localhost:5000/api/presentation-types/${id}`)
+            axios.get(apiUrl(`presentation-types/${id}`))
                 .then(res => setForm(res.data.data.presentationType))
                 .catch(console.error);
         }
@@ -28,9 +29,9 @@ export const TypeBuilder = () => {
     const handleSave = async () => {
         try {
             if (isEdit) {
-                await axios.put(`http://localhost:5000/api/presentation-types/${id}`, form);
+                await axios.put(apiUrl(`presentation-types/${id}`), form);
             } else {
-                await axios.post(`http://localhost:5000/api/presentation-types`, form);
+                await axios.post(apiUrl('presentation-types'), form);
             }
             navigate('/admin');
         } catch (err) {

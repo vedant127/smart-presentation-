@@ -100,6 +100,8 @@ export const generateFromProject = async (req, res, next) => {
         }
 
         console.log(`\n🏭 GENERATING FROM PROJECT: "${project.title}"`);
+        console.log('FULL BODY PLOTS (from project):', JSON.stringify(project.plots, null, 2));
+        console.log('Number of plots:', project.plots?.length || 0);
 
         // Prepare data
         let formData = project.formData || {};

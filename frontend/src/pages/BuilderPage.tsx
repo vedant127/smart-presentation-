@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { apiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,7 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { presentationTypes as initialTypes } from "@/data/mockData";
 import type { PresentationType, Criteria, Section, CriteriaOption } from "@/data/mockData";
 import {
   Plus,
@@ -34,6 +35,7 @@ import {
   X,
   Check,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/PageHeader";
@@ -373,12 +375,91 @@ const AddSectionDialog = ({ open, onOpenChange, onAdd, nextOrder }: AddSectionDi
   );
 };
 
+// Transform DB format to UI format
+function dbToUi(db: any): PresentationType {
+  const id = db._id?.toString() || db.id || "";
+  return {
+    id,
+    name: db.name,
+    enablePlots: db.enablePlots ?? false,
+    criteria: (db.criteria || []).map((c: any) => ({
+      id: c.name?.toLowerCase().replace(/\s/g, "-") || c.id || "",
+      name: c.name,
+      type: (c.type || "single") as "single" | "multiple",
+      options: Array.isArray(c.options)
+        ? (typeof c.options[0] === "string"
+            ? c.options.map((o: string) => ({ id: o.toLowerCase().replace(/\s/g, "-"), label: o }))
+            : c.options)
+        : [],
+    })),
+    sections: (db.sections || []).map((s: any, i: number) => {
+      const criteria = (db.criteria || []).map((c: any) => ({
+        id: c.name?.toLowerCase().replace(/\s/g, "-") || "",
+        name: c.name,
+      }));
+      return {
+        id: s.name?.toLowerCase().replace(/\s/g, "-") + "-" + i || "s" + i,
+        name: s.name,
+        order: s.order ?? i + 1,
+        varying: s.isVarying ?? s.varying ?? false,
+        varyingCriteria: (s.varyingCriteria || []).map((v: string) => {
+          const c = criteria.find((cr: any) => cr.name === v || cr.id === v);
+          return c?.id || v.toLowerCase().replace(/\s/g, "-");
+        }),
+        folderPath: s.folderPath,
+        filename: s.filename,
+      };
+    }),
+  };
+}
+
+// Transform UI format to DB format
+function uiToDb(ui: PresentationType) {
+  return {
+    name: ui.name,
+    enablePlots: ui.enablePlots,
+    criteria: ui.criteria.map((c) => ({
+      name: c.name,
+      type: c.type,
+      options: c.options.map((o) => (typeof o === "string" ? o : o.label)),
+      required: true,
+    })),
+    sections: ui.sections.map((s: any) => ({
+      name: s.name,
+      order: s.order,
+      isVarying: s.varying,
+      varyingCriteria: (s.varyingCriteria || [])
+        .map((cid: string) => ui.criteria.find((c) => c.id === cid || c.name.toLowerCase().replace(/\s/g, "-") === cid)?.name)
+        .filter(Boolean) as string[],
+      folderPath: s.folderPath || `${String(s.order).padStart(2, "0")}_${s.name}`,
+      filename: s.varying ? null : (s.filename || s.name.toLowerCase().replace(/\s+/g, "_").replace(/&/g, "") + ".pptx"),
+    })),
+  };
+}
+
 // ─── Main Builder Page ──────────────────────────────────────────────
 const BuilderPage = () => {
-  const [types, setTypes] = useState<PresentationType[]>(initialTypes);
-  const [expandedType, setExpandedType] = useState<string | null>("feasibility-study");
+  const [types, setTypes] = useState<PresentationType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [expandedType, setExpandedType] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"criteria" | "sections">("sections");
   const { toast } = useToast();
+
+  useEffect(() => {
+    axios
+      .get(apiUrl("presentation-types"))
+      .then((res) => {
+        const list = (res.data.data?.presentationTypes || []).map(dbToUi);
+        setTypes(list);
+        if (list.length > 0 && !expandedType) setExpandedType(list[0].id);
+      })
+      .catch((err) => {
+        console.error(err);
+        toast({ title: "Failed to load types", variant: "destructive" });
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   // Dialogs
   const [showCreateTypeDialog, setShowCreateTypeDialog] = useState(false);
@@ -469,6 +550,29 @@ const BuilderPage = () => {
     toast({ title: "Criterion deleted" });
   };
 
+  const handleSaveType = async (typeId: string) => {
+    const type = types.find((t) => t.id === typeId);
+    if (!type) return;
+    setSaving((prev) => ({ ...prev, [typeId]: true }));
+    try {
+      const payload = uiToDb(type);
+      if (typeId.match(/^[0-9a-fA-F]{24}$/)) {
+        await axios.put(apiUrl(`presentation-types/${typeId}`), payload);
+        toast({ title: "Type updated", description: `"${type.name}" saved.` });
+      } else {
+        const res = await axios.post(apiUrl("presentation-types"), payload);
+        const newType = dbToUi(res.data.data.presentationType);
+        setTypes((prev) => prev.map((t) => (t.id === typeId ? newType : t)));
+        setExpandedType(newType.id);
+        toast({ title: "Type created", description: `"${type.name}" saved.` });
+      }
+    } catch (err: any) {
+      toast({ title: "Save failed", description: err.response?.data?.message || "Check auth", variant: "destructive" });
+    } finally {
+      setSaving((prev) => ({ ...prev, [typeId]: false }));
+    }
+  };
+
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -513,7 +617,13 @@ const BuilderPage = () => {
       />
 
       <div className="flex-1 p-8 space-y-4">
-        {types.map((type) => {
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            <RefreshCw className="h-8 w-8 animate-spin mr-2" />
+            Loading presentation types...
+          </div>
+        ) : (
+        types.map((type) => {
           const isExpanded = expandedType === type.id;
           return (
             <Card key={type.id} className="overflow-hidden">
@@ -543,6 +653,25 @@ const BuilderPage = () => {
                       Multi-plot
                     </Badge>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={saving[type.id]}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSaveType(type.id);
+                    }}
+                  >
+                    {saving[type.id] ? (
+                      <>Saving...</>
+                    ) : (
+                      <>
+                        <Pencil className="h-3.5 w-3.5" />
+                        Save
+                      </>
+                    )}
+                  </Button>
                 </div>
               </button>
 
@@ -707,7 +836,8 @@ const BuilderPage = () => {
               )}
             </Card>
           );
-        })}
+        })
+        )}
       </div>
 
       {/* Section Edit Dialog */}
