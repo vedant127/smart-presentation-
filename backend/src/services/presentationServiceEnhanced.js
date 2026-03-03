@@ -14,7 +14,7 @@ import PizZip from 'pizzip';
 //   - Caps final output to MAX_SLIDES slides
 // ══════════════════════════════════════════════════════════════════════════════
 
-const MAX_SLIDES = 11;
+const MAX_SLIDES = 500; // No artificial cap — use all slides from selected templates
 
 // ─── SECTION CONFIG ──────────────────────────────────────────────────────────
 const SECTION_CONFIG = [
@@ -26,7 +26,7 @@ const SECTION_CONFIG = [
     { order: 6, folder: '06_Market Overview', file: null, varying: true },
     { order: 7, folder: '07_Development Recommendations Part 1', file: 'devrec_part1.pptx', varying: false },
     { order: 8, folder: '08_Development Recommendations Part 2', file: null, varying: true, fallbackFolder: '06_Market Overview' },
-    { order: 9, folder: '09_Development Recommendations Part 3', file: null, varying: true, fallbackFolder: '06_Market Overview' },
+    { order: 9, folder: '09_Development Recommendations Part 3', file: 'devrec_part3.pptx', varying: false },
     { order: 10, folder: '10_Financial & Investment Analysis', file: 'financial_investment_analysis.pptx', varying: false },
     { order: 11, folder: '11_Disclaimer', file: 'disclaimer.pptx', varying: false },
 ];

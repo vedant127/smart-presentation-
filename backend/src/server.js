@@ -116,9 +116,8 @@ const startServer = async () => {
         // Start listening
         // Start listening (0.0.0.0 avoids IPv6 address in use / refused issues)
         app.listen(PORT, '0.0.0.0', () => {
-            console.log(`\n🚀 SERVER RUNNING ON PORT ${PORT}`);
-            console.log(`📡 CORS ALLOWED FROM: ${config.corsOrigin}`);
-            console.log(`Health check: http://localhost:${PORT}/health\n`);
+            console.log(`SERVER RUNNING ON PORT ${PORT}`);
+            console.log(`mongodb connected`);
         });
 
     } catch (error) {

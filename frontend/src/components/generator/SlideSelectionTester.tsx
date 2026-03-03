@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { apiUrl } from '@/lib/api';
+import { processPptxResponse } from '@/lib/downloadPptx';
 import { Search, CheckCircle2, ListFilter, Building2, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -93,37 +94,47 @@ export const SlideSelectionTester = () => {
     };
 
     const handleDownload = async () => {
-        if (!selectedTypeId) return alert("No presentation template available");
+        if (!selectedTypeId) return alert('No presentation template available');
         setDownloading(true);
         try {
             const payload = {
                 presentationTypeId: selectedTypeId,
                 formData: {
                     title: `Test ${city} ${projectType}`,
-                    subtitle: "Generated via Slide Selection Tester",
-                    city,
-                    assetType: projectType, // standardized key
-                    projectType, // keep for safety
-                    Category: "General",
-                    Specifications: "Luxury" // Default for test
+                    projectName: `Test ${city} ${projectType}`,
+                    subtitle: 'Generated via Slide Selection Tester',
+                    City: city,
+                    'Asset Type': projectType,
                 },
-                plots: []
+                plots: [{
+                    criteria: {
+                        City: city,
+                        'Asset Type': projectType,
+                        Category: 'General',
+                        Specifications: 'Luxury',
+                    },
+                }],
             };
 
             const response = await axios.post(apiUrl('presentations/create-download'), payload, {
                 responseType: 'blob',
+                timeout: 120000,
+                validateStatus: () => true,
             });
 
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Test_Selection_${city}.pptx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } catch (error) {
+            const result = await processPptxResponse(
+                response.data,
+                response.headers as Record<string, string>,
+                response.status,
+                `Test_Selection_${city}_${projectType}.pptx`
+            );
+
+            if (!result.success) {
+                throw new Error(result.errorMessage);
+            }
+        } catch (error: any) {
             console.error(error);
-            alert("Download failed");
+            alert(error.message || 'Download failed');
         } finally {
             setDownloading(false);
         }

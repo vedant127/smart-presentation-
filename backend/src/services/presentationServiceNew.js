@@ -10,16 +10,40 @@ import PizZip from 'pizzip';
 //  Same logic as presentationServiceEnhanced.js
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Value normalization: frontend labels → library filename tokens
+const VALUE_MAP = {
+    'hotels': 'hotel', 'hotel': 'hotel', 'residential': 'residential', 'office': 'office', 'retail': 'retail',
+    '3-star': '3_star', '3 star': '3_star', '4-star': '4_star', '4 star': '4_star',
+    '5-star': '5_star', '5 star': '5_star',
+    'small regional mall': 'small_regional_mall', 'regional mall': 'regional_mall',
+    'community mall': 'community_mall', 'neighbourhood center': 'neighbourhood_center',
+    'convenience center': 'convenience_center',
+    'beach resort': 'beach_resort', 'business': 'business', 'city': 'city', 'leisure': 'leisure',
+    'apartments': 'apartments', 'villas': 'villas', 'townhouses': 'townhouses',
+    'luxury': 'luxury', 'high end': 'high_end', 'upper mid end': 'upper_mid_end', 'mid end': 'mid_end',
+    'low end': 'low_end', 'affordable': 'affordable', 'social': 'social',
+    'grade a': 'grade_a', 'grade b': 'grade_b',
+    'abu dhabi': 'abu_dhabi', 'abudhabi': 'abu_dhabi', 'dubai': 'dubai', 'riyadh': 'riyadh', 'jeddah': 'jeddah',
+};
+
+function normToken(val) {
+    if (!val || typeof val !== 'string') return '';
+    const lower = String(val).trim().toLowerCase();
+    const withUnderscores = lower.replace(/\s+/g, '_').replace(/-/g, '_');
+    return VALUE_MAP[lower] ?? VALUE_MAP[withUnderscores] ?? withUnderscores.replace(/[^a-z0-9_]/g, '');
+}
+
 // Build key: city_asset_type_category_specifications (underscore, lowercase, trim)
 // Matches filenames like abu_dhabi_hotel_small_regional_mall_city.pptx
 function buildKey(criteria) {
     if (!criteria || typeof criteria !== 'object') return '';
-    const parts = [
+    const raw = [
         criteria.City || criteria.city || '',
         criteria['Asset Type'] || criteria.assetType || criteria.asset_type || '',
         criteria.Category || criteria.category || '',
         criteria.Specifications || criteria.specifications || criteria.specs || criteria.spec || '',
-    ].map(s => String(s || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_'));
+    ];
+    const parts = raw.map(s => normToken(String(s || '')));
     return parts.filter(s => s.length > 0).join('_');
 }
 
@@ -224,13 +248,18 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     const files = [];
 
     function addFixed(folder, filename, label) {
-        const p = path.join(templateDir, folder, filename);
-        if (fs.existsSync(p)) {
-            const slideCount = countSlides(p);
-            files.push(p);
-            console.log(`  ✅ ${label} → ${filename} (${slideCount} slides)`);
+        const folderPath = path.join(templateDir, folder);
+        const fullPath = path.join(folderPath, filename);
+        if (fs.existsSync(fullPath)) {
+            const slideCount = countSlides(fullPath);
+            files.push(fullPath);
+            console.log(`  ✅ [FIXED] ${label} → ${filename} (${slideCount} slides)`);
         } else {
-            console.warn(`  ❌ MISSING: ${label} → ${p}`);
+            if (!fs.existsSync(folderPath)) {
+                fs.mkdirSync(folderPath, { recursive: true });
+                console.warn(`  📁 Created folder: ${folderPath} (upload ${filename} via Library)`);
+            }
+            console.warn(`  ❌ [FIXED] ${label} → SKIP (file not found): ${fullPath}`);
         }
     }
 
@@ -240,9 +269,9 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
         if (fs.existsSync(fullPath)) {
             const slideCount = countSlides(fullPath);
             files.push(fullPath);
-            console.log(`  ✅ ${label} [${filename}] FOUND & LOADED (${slideCount} slides)`);
+            console.log(`  ✅ [VARYING] ${label} → ${filename} FOUND & LOADED (${slideCount} slides)`);
         } else {
-            console.log(`  ❌ MISSING file → skip: ${filename} (path: ${fullPath})`);
+            console.warn(`  ⚠️ [VARYING] ${label} → SKIP (file not found): ${fullPath}`);
         }
     }
 
@@ -263,6 +292,7 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
             { folderPath: '11_Disclaimer', filename: 'disclaimer.pptx', isVarying: false },
         ];
 
+    // Merge order: unvarying → varying(06) → unvarying → varying(08) → unvarying(09) → ...
     for (const sec of sections) {
         const folder = sec.folderPath || sec.folder;
         const label = sec.name || folder;
@@ -278,7 +308,8 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
 
     if (files.length === 0) throw new Error('No Library files found!');
 
-    console.log(`\n  Files to merge (${files.length}):`, files.map(f => path.basename(f)).join(', '));
+    console.log(`\n  MERGE ORDER (${files.length} files):`);
+    files.forEach((f, i) => console.log(`    ${i + 1}. ${path.basename(f)} (${countSlides(f)} slides)`));
 
     const mergedBuffer = await mergePptxFiles(files);
     const outputDir = path.join(process.cwd(), 'generated');

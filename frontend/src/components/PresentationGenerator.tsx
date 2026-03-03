@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { apiUrl } from '@/lib/api';
+import { processPptxResponse } from '@/lib/downloadPptx';
 import { Download, FileText, Layers, Loader2, Plus, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -94,48 +95,46 @@ export const PresentationGenerator = () => {
 
         try {
             const payload = {
-                type: presentationType,
+                presentationTypeId: presentationType,
                 formData: {
                     title: formData.title,
+                    projectName: formData.title,
                     subtitle: formData.subtitle,
                 },
-                plots,
+                plots: plots.map((p) => ({
+                    criteria: {
+                        City: p.city,
+                        'Asset Type': p.assetType,
+                        Category: p.category,
+                        Specifications: p.specs,
+                    },
+                })),
             };
 
             console.log('[Generate] Sending payload:', JSON.stringify(payload, null, 2));
 
             const response = await axios.post(apiUrl('presentations/create-download'), payload, {
                 responseType: 'blob',
-                timeout: 120000, // 2 min timeout for large merges
+                timeout: 120000,
+                validateStatus: () => true,
             });
 
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute(
-                'download',
-                `${formData.title.replace(/\s+/g, '_')}_${presentationType.replace(/\s+/g, '_')}.pptx`
+            const fallbackName = `${formData.title.replace(/\s+/g, '_')}_${presentationType.replace(/\s+/g, '_')}.pptx`;
+            const result = await processPptxResponse(
+                response.data,
+                response.headers as Record<string, string>,
+                response.status,
+                fallbackName
             );
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+
+            if (!result.success) {
+                throw new Error(result.errorMessage);
+            }
 
             setSuccess(true);
         } catch (err: any) {
             console.error('[Generate] Error:', err);
-            if (err.response) {
-                // Try to read blob error
-                try {
-                    const text = await err.response.data.text();
-                    const parsed = JSON.parse(text);
-                    alert(`Error: ${parsed.message || 'Generation failed'}`);
-                } catch {
-                    alert('Presentation generation failed. Check backend logs.');
-                }
-            } else {
-                alert('Presentation generation failed. Is the backend running?');
-            }
+            alert(err.message || 'Presentation generation failed. Is the backend running?');
         } finally {
             setLoading(false);
         }

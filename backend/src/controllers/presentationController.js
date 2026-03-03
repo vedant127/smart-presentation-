@@ -1,6 +1,10 @@
 import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
-import { assemblePresentation } from '../services/presentationServiceEnhanced.js';
+import { assemblePresentation } from '../services/presentationServiceNew.js';
+import { assemblePresentationAutomizer } from '../services/presentationServiceAutomizer.js';
+
+// Set USE_PPTX_AUTOMIZER=true in .env when varying slides appear blank (JSZip doesn't copy slideLayouts)
+const USE_AUTOMIZER = process.env.USE_PPTX_AUTOMIZER === 'true' || process.env.USE_PPTX_AUTOMIZER === '1';
 
 
 /**
@@ -92,14 +96,11 @@ const generate = async (req, res, next) => {
         const guestId = '000000000000000000000000';
         const userId = req.user ? req.user._id : guestId;
 
-        console.log(`Starting System Assembly for ${presentationType.name} (via /generate)`);
+        console.log(`Starting System Assembly for ${presentationType.name} (via /generate)${USE_AUTOMIZER ? ' [pptx-automizer]' : ''}`);
 
-        const result = await assemblePresentation({
-            presentationType,
-            formData,
-            plots: plots || [],
-            userId
-        });
+        const result = USE_AUTOMIZER
+            ? await assemblePresentationAutomizer({ presentationType, formData, plots: plots || [], userId })
+            : await assemblePresentation({ presentationType, formData, plots: plots || [], userId });
 
         // Get file size for history
         let fileSize = 0;
@@ -384,12 +385,9 @@ const generateSelection = async (req, res, next) => {
         const guestId = '000000000000000000000000';
         const userId = req.user ? req.user._id : guestId;
 
-        const result = await assemblePresentation({
-            presentationType,
-            formData,
-            plots: plots || [],
-            userId
-        });
+        const result = USE_AUTOMIZER
+            ? await assemblePresentationAutomizer({ presentationType, formData, plots: plots || [], userId })
+            : await assemblePresentation({ presentationType, formData, plots: plots || [], userId });
 
         // Return generated file info
         res.json({
@@ -430,6 +428,14 @@ export {
  */
 const createAndDownload = async (req, res, next) => {
     try {
+        // ─── DIAGNOSTIC: Real input from frontend ─────────────────────────────
+        console.log('\n=== REAL INPUT FROM FRONTEND ===');
+        console.log('plots count:', req.body.plots?.length ?? 'MISSING');
+        (req.body.plots || []).forEach((p, i) => {
+            const criteria = p.criteria || p.data || p;
+            console.log(`Plot ${i + 1} criteria:`, JSON.stringify(criteria, null, 2));
+        });
+
         let { presentationTypeId, typeId, type, formData, plots } = req.body;
         // Alias support — accept ObjectId, or the type name string directly
         presentationTypeId = presentationTypeId || typeId || type;
@@ -493,9 +499,16 @@ const createAndDownload = async (req, res, next) => {
         // If the type has defined sections, we use the Assembly Engine.
         // This works for both Multi-Plot (List of Songs) and Single-Context project types.
         if (presentationType.sections && presentationType.sections.length > 0) {
-            console.log(`🏭 Starting System Assembly for ${presentationType.name}`);
+            console.log(`🏭 Starting System Assembly for ${presentationType.name}${USE_AUTOMIZER ? ' (pptx-automizer)' : ''}`);
 
-            const result = await assemblePresentation({
+            const result = USE_AUTOMIZER
+                ? await assemblePresentationAutomizer({
+                    presentationType,
+                    formData,
+                    plots: plots || [],
+                    userId
+                })
+                : await assemblePresentation({
                 presentationType,
                 formData,
                 plots: plots || [], // Pass empty array if null, engine handles it as single context
@@ -516,7 +529,14 @@ const createAndDownload = async (req, res, next) => {
                 });
             } catch (hErr) { console.warn("History skipped:", hErr.message); }
 
-            return res.download(result.filePath, result.fileName);
+            // Send file with explicit headers for reliable download (Postman + browser)
+            const fs = await import('fs');
+            const buffer = fs.readFileSync(result.filePath);
+            const safeName = encodeURIComponent(result.fileName);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+            res.setHeader('Content-Disposition', `attachment; filename="${result.fileName}"; filename*=UTF-8''${safeName}`);
+            res.setHeader('Content-Length', buffer.length);
+            return res.send(buffer);
         }
 
         // --- NO SECTIONS DEFINED - ERROR ---

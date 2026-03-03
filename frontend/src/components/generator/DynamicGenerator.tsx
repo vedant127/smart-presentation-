@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { apiUrl } from '@/lib/api';
+import { processPptxResponse } from '@/lib/downloadPptx';
 import { Loader2, Download, FileText, Plus, Trash2, CheckCircle2 } from 'lucide-react';
 
 export const DynamicGenerator = () => {
@@ -131,45 +132,24 @@ export const DynamicGenerator = () => {
                     responseType: 'blob',
                     timeout: 120000,
                     headers: { 'Content-Type': 'application/json' },
+                    validateStatus: () => true, // Don't throw on 4xx/5xx — we handle blob manually
                 }
             );
 
-            // Check if we got a JSON error disguised as a blob
-            const contentType = response.headers['content-type'] || '';
-            if (contentType.includes('application/json')) {
-                // Server returned a JSON error, not a PPTX file
-                const text = await response.data.text();
-                const errorData = JSON.parse(text);
-                throw new Error(errorData.message || 'Server returned an error');
+            const fallbackName = `${(formData.title || 'Presentation').replace(/\s+/g, '_')}_${Date.now()}.pptx`;
+            const result = await processPptxResponse(
+                response.data,
+                response.headers as Record<string, string>,
+                response.status,
+                fallbackName
+            );
+
+            if (!result.success) {
+                throw new Error(result.errorMessage || 'Download failed');
             }
-
-            // Create download from the blob
-            const blob = new Blob([response.data], {
-                type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-            });
-
-            // Try to get filename from Content-Disposition header
-            let fileName = `${(formData.title || 'Presentation').replace(/\s+/g, '_')}_${Date.now()}.pptx`;
-            const disposition = response.headers['content-disposition'];
-            if (disposition) {
-                const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-                if (match && match[1]) {
-                    fileName = match[1].replace(/['"]/g, '');
-                }
-            }
-
-            // Trigger browser download
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', fileName);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
 
             setSuccess(true);
-            console.log(`✅ Download started: ${fileName} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+            console.log(`✅ Download started: ${result.filename} (${(response.data.size / 1024 / 1024).toFixed(2)} MB)`);
 
         } catch (err: any) {
             console.error('Presentation Generation Error:', err);

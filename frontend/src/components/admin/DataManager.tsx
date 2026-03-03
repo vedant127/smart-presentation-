@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { apiUrl } from '@/lib/api';
+import { processPptxResponse } from '@/lib/downloadPptx';
 import { Search, Database, FileText, Check, Tag } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -100,36 +101,43 @@ export const DataManager = () => {
         if (results.length === 0) return;
         setGenerating(true);
         try {
-            // Prepare payload for generation
-            // We need to send: typeId, inputs (city, assetType, etc.), and maybe override slides if backend supports
-            // IF backend generation logic fetches slides itself based on type/inputs, then sending inputs is enough.
-            // visual "results" here are for confirmation.
-            // Let's assume sending inputs is the main way.
-
             const payload = {
-                typeId: feasibilityTypeId,
+                presentationTypeId: feasibilityTypeId,
                 formData: {
+                    title: `${selectedCity} ${selectedProjectType} Feasibility`,
+                    projectName: `${selectedCity} ${selectedProjectType}`,
                     City: selectedCity,
-                    "Asset Type": selectedProjectType
-                }
+                    'Asset Type': selectedProjectType,
+                },
+                plots: [{
+                    criteria: {
+                        City: selectedCity,
+                        'Asset Type': selectedProjectType,
+                        Category: 'General',
+                        Specifications: 'Luxury',
+                    },
+                }],
             };
 
             const response = await axios.post(apiUrl('presentations/create-download'), payload, {
-                responseType: 'blob' // Important for file download
+                responseType: 'blob',
+                timeout: 120000,
+                validateStatus: () => true,
             });
 
-            // Trigger download
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `${selectedCity}_${selectedProjectType}_FeasibilityStudy.pptx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
+            const result = await processPptxResponse(
+                response.data,
+                response.headers as Record<string, string>,
+                response.status,
+                `${selectedCity}_${selectedProjectType}_FeasibilityStudy.pptx`
+            );
 
-        } catch (err) {
-            console.error("Download failed", err);
-            alert("Failed to generate presentation. Please check console.");
+            if (!result.success) {
+                throw new Error(result.errorMessage);
+            }
+        } catch (err: any) {
+            console.error('Download failed', err);
+            alert(err.message || 'Failed to generate presentation.');
         } finally {
             setGenerating(false);
         }
