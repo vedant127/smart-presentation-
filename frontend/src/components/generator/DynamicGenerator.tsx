@@ -16,12 +16,22 @@ export const DynamicGenerator = () => {
     // UI States
     const [isGenerating, setIsGenerating] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [apiError, setApiError] = useState<string | null>(null);
 
     // 1. Fetch Types on Mount
     useEffect(() => {
+        setApiError(null);
         axios.get(apiUrl('presentation-types?isActive=true'))
-            .then(res => setTypes(res.data.data.presentationTypes))
-            .catch(console.error);
+            .then(res => {
+                setTypes(res.data.data?.presentationTypes ?? []);
+            })
+            .catch(err => {
+                console.error('Failed to load presentation types:', err);
+                const isConnectionError = err.code === 'ECONNREFUSED' || err.message?.includes('Network Error') || err.response?.status === 500;
+                setApiError(isConnectionError
+                    ? 'Backend server is not running. Start it with: cd backend && npm run dev (or run npm run dev from project root to start both)'
+                    : 'Failed to load presentation types');
+            });
     }, []);
 
     // 2. Fetch Schema when Type Selection Changes
@@ -33,12 +43,13 @@ export const DynamicGenerator = () => {
         setLoadingSchema(true);
         axios.get(apiUrl(`presentation-types/${selectedTypeId}/form-schema`))
             .then(res => {
-                setSchema(res.data.data.formSchema);
-                // Reset form state
+                setSchema(res.data.data?.formSchema ?? null);
                 setFormData({ title: '', subtitle: '' });
                 setPlots([{ id: 1, data: {} }]);
             })
-            .catch(console.error)
+            .catch(err => {
+                console.error('Failed to load form schema:', err);
+            })
             .finally(() => setLoadingSchema(false));
     }, [selectedTypeId]);
 
@@ -210,6 +221,11 @@ export const DynamicGenerator = () => {
 
     return (
         <div className="max-w-4xl mx-auto pb-20">
+            {apiError && (
+                <div className="mb-6 p-4 bg-amber-500/20 border border-amber-500/50 rounded-xl text-amber-200">
+                    <strong>Connection Error:</strong> {apiError}
+                </div>
+            )}
             {/* Step 1: Type Selection */}
             <div className="mb-8 animate-fade-in">
                 <label className="block text-slate-400 mb-2 font-medium">Select Presentation Type</label>

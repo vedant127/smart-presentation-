@@ -7,7 +7,7 @@ import {
     deleteHistory,
     createAndDownload,
     generateSelection,
-
+    generatePptx,
 } from '../controllers/presentationController.js';
 import { authenticate } from '../middleware/auth.js';
 import { validateObjectId } from '../middleware/validation.js';
@@ -22,6 +22,11 @@ const router = express.Router();
 // @desc    Generate and immediately download presentation
 // @access  Public
 router.post('/create-download', createAndDownload);
+
+// @route   POST /api/presentations/generate-pptx
+// @desc    Generate PPTX from form data (City, Property Type, etc.) — dynamic content
+// @access  Public
+router.post('/generate-pptx', generatePptx);
 
 // @route   POST /api/presentations/generate-presentation
 // @desc    Select appropriate slides based on user input

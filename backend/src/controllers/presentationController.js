@@ -2,9 +2,11 @@ import PresentationType from '../models/PresentationType.js';
 import PresentationHistory from '../models/PresentationHistory.js';
 import { assemblePresentation } from '../services/presentationServiceNew.js';
 import { assemblePresentationAutomizer } from '../services/presentationServiceAutomizer.js';
+import { generatePptxFromForm } from '../services/generatePptxFromForm.js';
 
-// Set USE_PPTX_AUTOMIZER=true in .env when varying slides appear blank (JSZip doesn't copy slideLayouts)
-const USE_AUTOMIZER = process.env.USE_PPTX_AUTOMIZER === 'true' || process.env.USE_PPTX_AUTOMIZER === '1';
+// pptx-automizer preserves theme, masters, images, tables. Use for real content.
+// Set USE_PPTX_AUTOMIZER=false to fall back to JSZip merge.
+const USE_AUTOMIZER = process.env.USE_PPTX_AUTOMIZER !== 'false' && process.env.USE_PPTX_AUTOMIZER !== '0';
 
 
 /**
@@ -415,11 +417,40 @@ export {
     deleteHistory,
     createAndDownload,
     generateSelection,
-
+    generatePptx,
 };
 
 // createPro removed as requested
 
+/**
+ * @route   POST /api/presentations/generate-pptx
+ * @desc    Generate PPTX from form data (City, Property Type, etc.) — dynamic content
+ * @access  Public
+ */
+const generatePptx = async (req, res, next) => {
+    try {
+        const formData = req.body;
+        if (!formData.city && !formData.propertyType && !formData.assetCategory) {
+            return res.status(400).json({
+                success: false,
+                message: 'At least one of City, Property Type, or Asset Category is required'
+            });
+        }
+
+        const result = await generatePptxFromForm(formData);
+        const fs = await import('fs');
+        const buffer = fs.readFileSync(result.filePath);
+        const safeName = encodeURIComponent(result.fileName);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        res.setHeader('Content-Disposition', `attachment; filename="${result.fileName}"; filename*=UTF-8''${safeName}`);
+        res.setHeader('Content-Length', buffer.length);
+        return res.send(buffer);
+    } catch (error) {
+        console.error('[GeneratePptx] Error:', error.message);
+        next(error);
+    }
+};
 
 /**
  * @route   POST /api/presentations/create-download

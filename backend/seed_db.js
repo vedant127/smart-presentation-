@@ -22,7 +22,7 @@ const seed = async () => {
                 { name: 'City', type: 'single', options: ['Dubai', 'Abu Dhabi', 'Riyadh', 'Jeddah'], required: true },
                 { name: 'Asset Type', type: 'single', options: ['Residential', 'Office', 'Retail', 'Hotel'], required: true },
                 { name: 'Category', type: 'single', options: ['Apartments', 'Villas', 'Townhouses', 'Grade A', 'Grade B', '3 Star', '4 Star', '5 Star', 'Community Mall', 'Regional Mall', 'Neighbourhood Center', 'Convenience Center', 'Small Regional Mall'], required: true },
-                { name: 'Specifications', type: 'single', options: ['Luxury', 'High End', 'Upper Mid End', 'Mid End', 'Affordable', 'Low End', 'Social', 'Business Park', 'High Rise', 'Mid Rise', 'Low Rise', 'Beach Resort', 'Business', 'City', 'Leisure'], required: true }
+                { name: 'Specifications', type: 'single', options: ['Luxury', 'High End', 'Upper Mid End', 'Mid End', 'Affordable', 'Low End', 'Social', 'Business Park', 'High Rise', 'Mid Rise', 'Low Rise', 'Beach Resort', 'Business', 'City', 'Leisure', 'Under 1M AED', '1M - 2M AED', '2M - 5M AED', '5M - 10M AED', '10M+ AED'], required: true }
             ],
             sections: [
                 { name: 'Cover Page', order: 1, isVarying: false, folderPath: '01_Cover Page', filename: 'cover.pptx' },
@@ -31,10 +31,10 @@ const seed = async () => {
                 { name: 'Executive Summary', order: 4, isVarying: false, folderPath: '04_Executive Summary', filename: 'executive_summary.pptx' },
                 { name: 'Site Assessment', order: 5, isVarying: false, folderPath: '05_Site Assessment', filename: 'site_assessment.pptx' },
                 { name: 'Market Overview', order: 6, isVarying: true, folderPath: '06_Market Overview', varyingCriteria: ['City', 'Asset Type', 'Category', 'Specifications'] },
-                { name: 'Development Recommendations Part 1', order: 7, isVarying: false, folderPath: '07_Development Recommendations Part 1', filename: 'development recommendations PART 1.pptx' },
+                { name: 'Development Recommendations Part 1', order: 7, isVarying: false, folderPath: '07_Development Recommendations Part 1', filename: 'devrec_part1.pptx' },
                 { name: 'Development Recommendations Part 2', order: 8, isVarying: true, folderPath: '08_Development Recommendations Part 2', varyingCriteria: ['City', 'Asset Type', 'Category', 'Specifications'] },
-                { name: 'Development Recommendations Part 3', order: 9, isVarying: false, folderPath: '09_Development Recommendations Part 3', filename: 'development recommendations PART 3.pptx' },
-                { name: 'Financial & Investment Analysis', order: 10, isVarying: false, folderPath: '10_Financial & Investment Analysis', filename: 'financial and investment analysis.pptx' },
+                { name: 'Development Recommendations Part 3', order: 9, isVarying: false, folderPath: '09_Development Recommendations Part 3', filename: 'devrec_part3.pptx' },
+                { name: 'Financial & Investment Analysis', order: 10, isVarying: false, folderPath: '10_Financial & Investment Analysis', filename: 'financial_investment_analysis.pptx' },
                 { name: 'Disclaimer', order: 11, isVarying: false, folderPath: '11_Disclaimer', filename: 'disclaimer.pptx' }
             ],
             enablePlots: true,

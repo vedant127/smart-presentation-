@@ -70,7 +70,8 @@ export async function processPptxResponse(
     try {
       const text = await data.text();
       const parsed = JSON.parse(text);
-      return { success: false, errorMessage: parsed.message || parsed.error || 'Request failed' };
+      const msg = parsed.message || parsed.error || 'Request failed';
+      return { success: false, errorMessage: msg };
     } catch {
       return { success: false, errorMessage: `Request failed (HTTP ${status})` };
     }

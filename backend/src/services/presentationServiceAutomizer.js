@@ -14,51 +14,28 @@
  */
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { Automizer } from 'pptx-automizer';
 import PizZip from 'pizzip';
 
-// ─── Same VALUE_MAP & buildKey as presentationServiceNew ─────────────────────
-const VALUE_MAP = {
-    'hotels': 'hotel', 'hotel': 'hotel', 'residential': 'residential', 'office': 'office', 'retail': 'retail',
-    '3-star': '3_star', '3 star': '3_star', '4-star': '4_star', '4 star': '4_star',
-    '5-star': '5_star', '5 star': '5_star',
-    'small regional mall': 'small_regional_mall', 'regional mall': 'regional_mall',
-    'community mall': 'community_mall', 'neighbourhood center': 'neighbourhood_center',
-    'convenience center': 'convenience_center',
-    'beach resort': 'beach_resort', 'business': 'business', 'city': 'city', 'leisure': 'leisure',
-    'apartments': 'apartments', 'villas': 'villas', 'townhouses': 'townhouses',
-    'luxury': 'luxury', 'high end': 'high_end', 'upper mid end': 'upper_mid_end', 'mid end': 'mid_end',
-    'low end': 'low_end', 'affordable': 'affordable', 'social': 'social',
-    'grade a': 'grade_a', 'grade b': 'grade_b',
-    'abu dhabi': 'abu_dhabi', 'abudhabi': 'abu_dhabi', 'dubai': 'dubai', 'riyadh': 'riyadh', 'jeddah': 'jeddah',
-};
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-function normToken(val) {
-    if (!val || typeof val !== 'string') return '';
-    const lower = String(val).trim().toLowerCase();
-    const withUnderscores = lower.replace(/\s+/g, '_').replace(/-/g, '_');
-    return VALUE_MAP[lower] ?? VALUE_MAP[withUnderscores] ?? withUnderscores.replace(/[^a-z0-9_]/g, '');
-}
+// ─── Use keyBuilder for form + schema compatibility (includes price range) ─────
+import { buildKey, buildKeyFromForm, formDataToCriteria, findMatchingFile } from '../utils/keyBuilder.js';
 
-function buildKey(criteria) {
-    if (!criteria || typeof criteria !== 'object') return '';
-    const raw = [
-        criteria.City || criteria.city || '',
-        criteria['Asset Type'] || criteria.assetType || criteria.asset_type || '',
-        criteria.Category || criteria.category || '',
-        criteria.Specifications || criteria.specifications || criteria.specs || criteria.spec || '',
-    ];
-    const parts = raw.map(s => normToken(String(s || '')));
-    return parts.filter(s => s.length > 0).join('_');
-}
-
+/** Deduplicate: one entry per unique key (no repeats for same plot criteria) */
 function getUniqueKeys(plots) {
     const uniqueKeys = new Set();
     for (const plot of plots || []) {
         const criteria = plot.criteria || plot.data || plot;
-        const key = buildKey(criteria);
+        const key = (criteria.city || criteria.propertyType || criteria.priceRange)
+            ? buildKeyFromForm(criteria)
+            : buildKey(formDataToCriteria(criteria));
         if (key) uniqueKeys.add(key);
+        const legacy = buildKey(formDataToCriteria(criteria));
+        if (legacy && legacy !== key) uniqueKeys.add(legacy);
     }
     return Array.from(uniqueKeys);
 }
@@ -72,20 +49,16 @@ function countSlides(filePath) {
 }
 
 function getLibraryPath(typeName = 'Feasibility Study') {
-    const cwd = process.cwd();
-    const __dirname = path.dirname(new URL(import.meta.url).pathname);
-    const libRoot = path.join(cwd, 'Library');
+    const backendRoot = path.join(__dirname, '..', '..');
     const candidates = [
-        path.join(cwd, 'Library', typeName),
-        path.join(cwd, '..', 'Library', typeName),
-        path.join(cwd, 'src', 'Library', typeName),
-        path.join(__dirname, '..', '..', 'Library', typeName),
-        path.join(cwd, 'Library', 'Feasibility Study'),
-        path.join(cwd, '..', 'Library', 'Feasibility Study'),
+        path.join(backendRoot, 'Library', typeName),
+        path.join(process.cwd(), 'Library', typeName),
+        path.join(process.cwd(), '..', 'Library', typeName),
     ];
     for (const p of candidates) {
         if (fs.existsSync(p)) return p;
     }
+    const libRoot = path.join(backendRoot, 'Library');
     if (fs.existsSync(libRoot)) return path.join(libRoot, typeName);
     throw new Error(`Library folder not found for type: ${typeName}`);
 }
@@ -93,13 +66,8 @@ function getLibraryPath(typeName = 'Feasibility Study') {
 // ─── pptx-automizer assembly ──────────────────────────────────────────────────
 
 /**
- * Bulletproof addSlide loop for varying files.
- * Guarantees all slides are added with correct template reference.
- *
- * @param {object} pres - Automizer instance (after loadRoot + loads)
- * @param {string} templateId - Label used in pres.load(fullPath, templateId)
- * @param {string} fullPath - Absolute path to PPTX file
- * @param {string} label - Log label (e.g. "Market Overview")
+ * Add all slides from a template. pptx-automizer preserves theme/masters when
+ * removeExistingSlides: false and autoImportSlideMasters: true.
  */
 async function addAllSlidesFromTemplate(pres, templateId, fullPath, label) {
     const zip = new PizZip(fs.readFileSync(fullPath));
@@ -108,24 +76,23 @@ async function addAllSlidesFromTemplate(pres, templateId, fullPath, label) {
         .sort((a, b) => parseInt(a.match(/slide(\d+)/)[1]) - parseInt(b.match(/slide(\d+)/)[1]));
 
     const slideCount = slidePaths.length;
-    console.log(`  [AUTOMIZER] Template "${templateId}" registered from ${path.basename(fullPath)}`);
-    console.log(`  [AUTOMIZER] About to add ${slideCount} slides from ${templateId}`);
+    console.log(`  [AUTOMIZER] Adding ${slideCount} slides from "${templateId}" (${path.basename(fullPath)})`);
 
     if (slideCount === 0) {
-        console.warn(`  [AUTOMIZER] WARNING: No slides found in ${fullPath}`);
+        console.warn(`  [AUTOMIZER] WARNING: No slides in ${fullPath}`);
         return;
     }
 
     for (let i = 1; i <= slideCount; i++) {
         try {
             pres.addSlide(templateId, i);
-            console.log(`  [AUTOMIZER] ✓ Added slide ${i}/${slideCount} from ${templateId}`);
         } catch (err) {
             console.error(`  [AUTOMIZER] ✗ addSlide(${templateId}, ${i}) FAILED:`, err.message);
             throw err;
         }
     }
-    console.log(`  [AUTOMIZER] Finished adding ${slideCount} slides from ${templateId}`);
+    const totalNow = typeof pres.getSlideCount === 'function' ? pres.getSlideCount() : '?';
+    console.log(`  [AUTOMIZER] ✓ Added ${slideCount} slides from ${templateId}. Total slides: ${totalNow}`);
 }
 
 /**
@@ -139,48 +106,39 @@ export async function assemblePresentationAutomizer({ presentationType, formData
 
     const typeName = presentationType?.name || 'Feasibility Study';
     const templateDir = getLibraryPath(typeName);
-    const outputDir = path.join(process.cwd(), 'generated');
+    const backendRoot = path.join(__dirname, '..', '..');
+    const outputDir = path.join(backendRoot, 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     const uniqueKeys = getUniqueKeys(plots || []);
     console.log('Unique keys:', uniqueKeys);
 
-    // Root: use first fixed file (cover) or RootTemplate if exists
-    const rootCandidates = [
-        path.join(templateDir, '01_Cover Page', 'cover.pptx'),
-        path.join(templateDir, '01_Cover Page', 'Cover.pptx'),
-        path.join(process.cwd(), 'Library', 'RootTemplate.pptx'),
-    ];
-    let rootPath = rootCandidates.find(p => fs.existsSync(p));
-    if (!rootPath) {
+    // Root: use cover.pptx — preserves theme, masters, fonts. DO NOT truncate.
+    let rootPath = path.join(templateDir, '01_Cover Page', 'cover.pptx');
+    if (!fs.existsSync(rootPath)) {
         const coverDir = path.join(templateDir, '01_Cover Page');
-        if (fs.existsSync(coverDir)) {
-            const first = fs.readdirSync(coverDir).find(f => f.endsWith('.pptx'));
-            if (first) rootPath = path.join(coverDir, first);
-        }
+        const first = fs.existsSync(coverDir) ? fs.readdirSync(coverDir).find(f => f.endsWith('.pptx')) : null;
+        rootPath = first ? path.join(coverDir, first) : null;
     }
     if (!rootPath || !fs.existsSync(rootPath)) {
-        throw new Error('Root template not found. Need cover.pptx or RootTemplate.pptx in Library.');
+        throw new Error('Root template (cover.pptx) not found in Library. Run: npm run populate');
     }
 
-    console.log(`  [AUTOMIZER] Root: ${path.basename(rootPath)}`);
+    console.log(`  [AUTOMIZER] Root: ${path.basename(rootPath)} (preserves theme/masters)`);
 
-    // templateDir = Library/Feasibility Study so we can load "01_Cover Page/cover.pptx", "06_Market Overview/xxx.pptx"
     const automizer = new Automizer({
         templateDir,
         outputDir,
-        removeExistingSlides: true,
-        autoImportSlideMasters: true,  // CRITICAL: imports layout so varying slides render
+        removeExistingSlides: false,   // CRITICAL: keep root slides & theme — content survives
+        autoImportSlideMasters: true,  // Import layouts so varying slides render correctly
+        cleanup: true,
         verbosity: 1,
+        compression: 6,
     });
 
-    // loadRoot expects path relative to templateDir (provides theme/masters)
     const rootRel = path.relative(templateDir, rootPath).replace(/\\/g, '/');
     let pres = automizer.loadRoot(rootRel);
-
-    // Root is truncated. Load root file again as template 'root' and add its slides.
-    pres = pres.load(rootRel, 'root');
-    await addAllSlidesFromTemplate(pres, 'root', rootPath, 'Root/Cover');
+    // Root keeps its slides (cover). We append toc, project_background, etc. — no need to add cover again.
 
     const sections = presentationType?.sections?.length > 0
         ? [...presentationType.sections].sort((a, b) => (a.order || 0) - (b.order || 0))
@@ -202,18 +160,28 @@ export async function assemblePresentationAutomizer({ presentationType, formData
         const folder = sec.folderPath || sec.folder;
         const label = sec.name || folder;
 
-        if (sec.isVarying && !sec.filename) {
-            for (const key of uniqueKeys) {
-                const filename = `${key}.pptx`;
-                const fullPath = path.join(templateDir, folder, filename);
+        // Skip cover — already in root (loadRoot keeps it)
+        if (folder === '01_Cover Page' || folder?.startsWith('01_Cover')) {
+            console.log(`  [AUTOMIZER] Skip ${label} (already in root)`);
+            continue;
+        }
 
+        if (sec.isVarying && !sec.filename) {
+            const plotCriteria = (plots || [])[0]?.criteria || (plots || [])[0]?.data || {};
+            const addedPaths = new Set();
+            for (const key of uniqueKeys) {
+                let fullPath = path.join(templateDir, folder, `${key}.pptx`);
                 if (!fs.existsSync(fullPath)) {
-                    console.warn(`  ⚠️ [VARYING] ${label} → SKIP (not found): ${filename}`);
+                    fullPath = findMatchingFile(path.join(templateDir, folder), plotCriteria);
+                }
+                if (!fullPath || addedPaths.has(fullPath)) {
+                    if (!fullPath) console.warn(`  ⚠️ [VARYING] ${label} → SKIP (not found): ${key}.pptx`);
                     continue;
                 }
+                addedPaths.add(fullPath);
 
-                const templateId = `var_${key.replace(/[^a-z0-9]/gi, '_')}`;
-                console.log(`  [AUTOMIZER] Loading varying: ${filename} as "${templateId}"`);
+                const templateId = `var_${path.basename(fullPath, '.pptx').replace(/[^a-z0-9]/gi, '_')}`;
+                console.log(`  [AUTOMIZER] Loading varying: ${path.basename(fullPath)} as "${templateId}"`);
 
                 const relPath = path.relative(templateDir, fullPath).replace(/\\/g, '/');
                 try {
@@ -257,32 +225,52 @@ export async function assemblePresentationAutomizer({ presentationType, formData
 
     const outputPath = path.join(outputDir, outputFile);
 
-    // Token replacement (project name, client, date)
+    // Token replacement — inject frontend form data into slides (including financials)
+    const formatDate = (val) => {
+        if (!val) return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    };
     const projectName = formData.title || formData.projectName || formData.projectTitle || 'Untitled Project';
     const clientName = formData.clientName || formData.client_name || 'Confidential';
-    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const subtitle = formData.subtitle || formData.Subtitle || '';
+    const dateStr = formData.date ? formatDate(formData.date) : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const replacements = {
         '{{PROJECT_NAME}}': projectName, '{{CLIENT_NAME}}': clientName, '{{DATE}}': dateStr,
-        '{{Title}}': projectName, '{{Subtitle}}': clientName,
-        '{{title}}': projectName, '{{subtitle}}': clientName,
+        '{{Title}}': projectName, '{{Subtitle}}': subtitle || clientName,
+        '{{title}}': projectName, '{{subtitle}}': subtitle || clientName,
         '{{project_name}}': projectName, '{{client_name}}': clientName,
-        '{{TITLE}}': projectName, '{{SUBTITLE}}': clientName,
+        '{{TITLE}}': projectName, '{{SUBTITLE}}': subtitle || clientName,
         '{{YEAR}}': new Date().getFullYear().toString(),
+        '{{CITY}}': formData.city || formData.City || '',
+        '{{PROPERTY_TYPE}}': formData.propertyType || formData.property_type || '',
+        '{{ASSET_CATEGORY}}': formData.assetCategory || formData.asset_category || '',
+        '{{NUMBER_OF_UNITS}}': String(formData.numberOfUnits ?? formData.number_of_units ?? formData.units ?? 'TBD'),
+        '{{PRICE_RANGE}}': formData.priceRange || formData.price_range || '',
+        '{{TOTAL_REVENUE}}': formData.totalRevenue || formData.total_revenue || 'TBD',
+        '{{DEV_COST}}': formData.devCost || formData.dev_cost || 'TBD',
+        '{{TARGET_IRR}}': formData.targetIRR || formData.target_irr || 'TBD',
+        '{{PAYBACK_PERIOD}}': formData.paybackPeriod || formData.payback_period || 'TBD',
     };
+    for (const [k, v] of Object.entries(formData)) {
+        if (v != null && typeof v === 'string' && !replacements[`{{${k}}}`]) {
+            replacements[`{{${k}}}`] = v;
+        }
+    }
     const JSZip = (await import('jszip')).default;
     const outZip = await JSZip.loadAsync(fs.readFileSync(outputPath));
-    const slidePaths = Object.keys(outZip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
-    for (const slidePath of slidePaths) {
-        const sf = outZip.file(slidePath);
+    const xmlFiles = Object.keys(outZip.files).filter(f => f.endsWith('.xml'));
+    for (const filePath of xmlFiles) {
+        const sf = outZip.file(filePath);
         if (!sf || sf.dir) continue;
         let xml = await sf.async('string');
         let modified = false;
         for (const [token, value] of Object.entries(replacements)) {
             if (xml.includes(token)) { xml = xml.split(token).join(value); modified = true; }
         }
-        if (modified) outZip.file(slidePath, xml);
+        if (modified) outZip.file(filePath, xml);
     }
-    fs.writeFileSync(outputPath, await outZip.generateAsync({ type: 'nodebuffer' }));
+    fs.writeFileSync(outputPath, await outZip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } }));
 
     const fileSize = fs.statSync(outputPath).size;
     const slideCount = countSlides(outputPath);
@@ -312,7 +300,7 @@ export async function runMinimalTest() {
     const automizer = new Automizer({
         templateDir,
         outputDir,
-        removeExistingSlides: true,
+        removeExistingSlides: false,
         autoImportSlideMasters: true,
         verbosity: 2,
     });

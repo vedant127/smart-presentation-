@@ -1,8 +1,12 @@
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import JSZip from 'jszip';
 import PizZip from 'pizzip';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  PRESENTATION SERVICE (New) — v5 Bulletproof JSZip merge
@@ -10,49 +14,19 @@ import PizZip from 'pizzip';
 //  Same logic as presentationServiceEnhanced.js
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Value normalization: frontend labels → library filename tokens
-const VALUE_MAP = {
-    'hotels': 'hotel', 'hotel': 'hotel', 'residential': 'residential', 'office': 'office', 'retail': 'retail',
-    '3-star': '3_star', '3 star': '3_star', '4-star': '4_star', '4 star': '4_star',
-    '5-star': '5_star', '5 star': '5_star',
-    'small regional mall': 'small_regional_mall', 'regional mall': 'regional_mall',
-    'community mall': 'community_mall', 'neighbourhood center': 'neighbourhood_center',
-    'convenience center': 'convenience_center',
-    'beach resort': 'beach_resort', 'business': 'business', 'city': 'city', 'leisure': 'leisure',
-    'apartments': 'apartments', 'villas': 'villas', 'townhouses': 'townhouses',
-    'luxury': 'luxury', 'high end': 'high_end', 'upper mid end': 'upper_mid_end', 'mid end': 'mid_end',
-    'low end': 'low_end', 'affordable': 'affordable', 'social': 'social',
-    'grade a': 'grade_a', 'grade b': 'grade_b',
-    'abu dhabi': 'abu_dhabi', 'abudhabi': 'abu_dhabi', 'dubai': 'dubai', 'riyadh': 'riyadh', 'jeddah': 'jeddah',
-};
-
-function normToken(val) {
-    if (!val || typeof val !== 'string') return '';
-    const lower = String(val).trim().toLowerCase();
-    const withUnderscores = lower.replace(/\s+/g, '_').replace(/-/g, '_');
-    return VALUE_MAP[lower] ?? VALUE_MAP[withUnderscores] ?? withUnderscores.replace(/[^a-z0-9_]/g, '');
-}
-
-// Build key: city_asset_type_category_specifications (underscore, lowercase, trim)
-// Matches filenames like abu_dhabi_hotel_small_regional_mall_city.pptx
-function buildKey(criteria) {
-    if (!criteria || typeof criteria !== 'object') return '';
-    const raw = [
-        criteria.City || criteria.city || '',
-        criteria['Asset Type'] || criteria.assetType || criteria.asset_type || '',
-        criteria.Category || criteria.category || '',
-        criteria.Specifications || criteria.specifications || criteria.specs || criteria.spec || '',
-    ];
-    const parts = raw.map(s => normToken(String(s || '')));
-    return parts.filter(s => s.length > 0).join('_');
-}
+// Use keyBuilder for form + schema compatibility (includes price range)
+import { buildKey, buildKeyFromForm, formDataToCriteria, findMatchingFile } from '../utils/keyBuilder.js';
 
 function getUniqueKeys(plots) {
     const uniqueKeys = new Set();
     for (const plot of plots || []) {
         const criteria = plot.criteria || plot.data || plot;
-        const key = buildKey(criteria);
+        const key = (criteria.city || criteria.propertyType || criteria.priceRange)
+            ? buildKeyFromForm(criteria)
+            : buildKey(formDataToCriteria(criteria));
         if (key) uniqueKeys.add(key);
+        const legacy = buildKey(formDataToCriteria(criteria));
+        if (legacy) uniqueKeys.add(legacy);
     }
     return Array.from(uniqueKeys);
 }
@@ -70,23 +44,20 @@ function countSlidesInZip(zip) {
         .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
 }
 
+// Library path: always resolve from backend root (works regardless of process.cwd())
 function getLibraryPath(typeName = 'Feasibility Study') {
-    const cwd = process.cwd();
-    const __dirname = path.dirname(new URL(import.meta.url).pathname);
-    const libRoot = path.join(cwd, 'Library');
+    const backendRoot = path.join(__dirname, '..', '..');
     const candidates = [
-        path.join(cwd, 'Library', typeName),
-        path.join(cwd, '..', 'Library', typeName),
-        path.join(cwd, 'src', 'Library', typeName),
-        path.join(__dirname, '..', '..', 'Library', typeName),
-        path.join(cwd, 'Library', 'Feasibility Study'),
-        path.join(cwd, '..', 'Library', 'Feasibility Study'),
+        path.join(backendRoot, 'Library', typeName),
+        path.join(process.cwd(), 'Library', typeName),
+        path.join(process.cwd(), '..', 'Library', typeName),
     ];
     for (const p of candidates) {
         if (fs.existsSync(p)) return p;
     }
+    const libRoot = path.join(backendRoot, 'Library');
     if (fs.existsSync(libRoot)) return path.join(libRoot, typeName);
-    throw new Error(`Library folder not found for type: ${typeName}`);
+    throw new Error(`Library folder not found for type: ${typeName}. Run: npm run populate`);
 }
 
 // ─── Bulletproof Merge ───────────────────────────────────────────────────────
@@ -125,45 +96,70 @@ async function mergePptxFiles(fileList) {
     const newContentTypeEntries = [];
 
     for (let s = 1; s < fileList.length; s++) {
+        const srcPath = fileList[s];
+        const srcName = path.basename(srcPath);
         let srcZip;
         try {
-            srcZip = await JSZip.loadAsync(fs.readFileSync(fileList[s]));
-        } catch (err) { continue; }
+            srcZip = await JSZip.loadAsync(fs.readFileSync(srcPath));
+        } catch (err) {
+            console.log(`[DEBUG] SKIP file ${s + 1}: ${srcName} (load error: ${err.message})`);
+            continue;
+        }
 
         const srcSlides = Object.keys(srcZip.files)
             .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
             .sort((a, b) => parseInt(a.match(/slide(\d+)/)[1]) - parseInt(b.match(/slide(\d+)/)[1]));
 
+        console.log(`[DEBUG] Preparing to add ${srcSlides.length} slides from file "${srcName}"`);
+
+        let addedCount = 0;
         for (const srcSlidePath of srcSlides) {
             const slideFile = srcZip.file(srcSlidePath);
             if (!slideFile || slideFile.dir) continue;
 
-            slideCount++;
-            maxRId++;
-            maxSldId++;
-
-            outputZip.file(`ppt/slides/slide${slideCount}.xml`, await slideFile.async('string'));
-
             const srcNum = srcSlidePath.match(/slide(\d+)/)[1];
-            const srcRelFile = srcZip.file(`ppt/slides/_rels/slide${srcNum}.xml.rels`);
-            if (srcRelFile && !srcRelFile.dir) {
-                let relXml = await srcRelFile.async('string');
-                for (const mr of relXml.matchAll(/Target="\.\.\/media\/([^"]+)"/g)) {
-                    const orig = mr[1];
-                    const uniq = `s${s}_${orig}`;
-                    relXml = relXml.split(`../media/${orig}`).join(`../media/${uniq}`);
-                    const srcMedia = srcZip.file(`ppt/media/${orig}`);
-                    if (srcMedia && !srcMedia.dir) {
-                        outputZip.file(`ppt/media/${uniq}`, await srcMedia.async('nodebuffer'));
+            console.log(`[DEBUG] Attempting to add slide ${srcNum}/${srcSlides.length} from "${srcName}"`);
+
+            try {
+                slideCount++;
+                maxRId++;
+                maxSldId++;
+
+                outputZip.file(`ppt/slides/slide${slideCount}.xml`, await slideFile.async('string'));
+
+                const srcRelFile = srcZip.file(`ppt/slides/_rels/slide${srcNum}.xml.rels`);
+                let relXml;
+                if (srcRelFile && !srcRelFile.dir) {
+                    relXml = await srcRelFile.async('string');
+                    for (const mr of relXml.matchAll(/Target="\.\.\/media\/([^"]+)"/g)) {
+                        const orig = mr[1];
+                        const uniq = `s${s}_${orig}`;
+                        relXml = relXml.split(`../media/${orig}`).join(`../media/${uniq}`);
+                        const srcMedia = srcZip.file(`ppt/media/${orig}`);
+                        if (srcMedia && !srcMedia.dir) {
+                            outputZip.file(`ppt/media/${uniq}`, await srcMedia.async('nodebuffer'));
+                        }
                     }
+                } else {
+                    relXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`;
                 }
                 outputZip.file(`ppt/slides/_rels/slide${slideCount}.xml.rels`, relXml);
-            }
 
-            newSldIdEntries.push(`<p:sldId id="${maxSldId}" r:id="rId${maxRId}"/>`);
-            newRelEntries.push(`<Relationship Id="rId${maxRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${slideCount}.xml"/>`);
-            newContentTypeEntries.push(`<Override PartName="/ppt/slides/slide${slideCount}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`);
+                newSldIdEntries.push(`<p:sldId id="${maxSldId}" r:id="rId${maxRId}"/>`);
+                newRelEntries.push(`<Relationship Id="rId${maxRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${slideCount}.xml"/>`);
+                newContentTypeEntries.push(`<Override PartName="/ppt/slides/slide${slideCount}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`);
+
+                addedCount++;
+                console.log(`[DEBUG] SUCCESS - slide ${srcNum} added as output slide ${slideCount}`);
+            } catch (err) {
+                console.log(`[DEBUG] ERROR adding slide ${srcNum}:`, err.message);
+            }
         }
+
+        console.log(`[DEBUG] Finished adding from "${srcName}". Actually added: ${addedCount} slides`);
     }
 
     if (newContentTypeEntries.length > 0) {
@@ -221,10 +217,24 @@ async function replaceTokens(pptxPath, replacements) {
     fs.writeFileSync(pptxPath, await zip.generateAsync({ type: 'nodebuffer' }));
 }
 
+// #region agent log
+function debugLog(msg, data) {
+    const logPath = path.join(process.cwd(), '..', 'debug-776817.log');
+    try {
+        const line = JSON.stringify({ sessionId: '776817', timestamp: Date.now(), message: msg, data: data || {} }) + '\n';
+        fs.appendFileSync(logPath, line);
+    } catch (_) {}
+}
+// #endregion
+
 export async function assemblePresentation({ presentationType, formData = {}, plots = [], userId }) {
     console.log('\n══════════════════════════════════════════');
     console.log('  ASSEMBLY START (v5 — Bulletproof Merge)');
     console.log('══════════════════════════════════════════');
+
+    // #region agent log
+    debugLog('ASSEMBLY_START', { plotsCount: plots?.length, plots: plots });
+    // #endregion
 
     // ─── Debug: raw plots from request ───────────────────────────────────────
     console.log('FULL BODY PLOTS RECEIVED:', JSON.stringify(plots, null, 2));
@@ -232,6 +242,10 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
 
     const typeName = presentationType?.name || 'Feasibility Study';
     const templateDir = getLibraryPath(typeName);
+
+    // #region agent log
+    debugLog('TEMPLATE_DIR', { templateDir, typeName });
+    // #endregion
 
     // ─── 1. Loop over plots, build keys, collect UNIQUE keys only ─────────────
     const uniqueKeys = getUniqueKeys(plots || []);
@@ -244,6 +258,10 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
         });
     }
     console.log('Unique keys:', uniqueKeys);
+
+    // #region agent log
+    debugLog('UNIQUE_KEYS', { uniqueKeys });
+    // #endregion
 
     const files = [];
 
@@ -263,15 +281,20 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
         }
     }
 
+    const plotCriteria = (plots || [])[0]?.criteria || (plots || [])[0]?.data || {};
+    const addedVaryingPaths = new Set();
     function addVarying(folder, key, label) {
-        const filename = `${key}.pptx`;
-        const fullPath = path.join(templateDir, folder, filename);
-        if (fs.existsSync(fullPath)) {
+        let fullPath = path.join(templateDir, folder, `${key}.pptx`);
+        if (!fs.existsSync(fullPath)) {
+            fullPath = findMatchingFile(path.join(templateDir, folder), plotCriteria);
+        }
+        if (fullPath && !addedVaryingPaths.has(fullPath)) {
+            addedVaryingPaths.add(fullPath);
             const slideCount = countSlides(fullPath);
             files.push(fullPath);
-            console.log(`  ✅ [VARYING] ${label} → ${filename} FOUND & LOADED (${slideCount} slides)`);
-        } else {
-            console.warn(`  ⚠️ [VARYING] ${label} → SKIP (file not found): ${fullPath}`);
+            console.log(`  ✅ [VARYING] ${label} → ${path.basename(fullPath)} FOUND & LOADED (${slideCount} slides)`);
+        } else if (!fullPath) {
+            console.warn(`  ⚠️ [VARYING] ${label} → SKIP (file not found): ${key}.pptx`);
         }
     }
 
@@ -308,11 +331,16 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
 
     if (files.length === 0) throw new Error('No Library files found!');
 
+    // #region agent log
+    debugLog('FINAL_FILE_LIST', { count: files.length, files: files.map(f => path.basename(f)) });
+    // #endregion
+
     console.log(`\n  MERGE ORDER (${files.length} files):`);
     files.forEach((f, i) => console.log(`    ${i + 1}. ${path.basename(f)} (${countSlides(f)} slides)`));
 
     const mergedBuffer = await mergePptxFiles(files);
-    const outputDir = path.join(process.cwd(), 'generated');
+    const backendRoot = path.join(__dirname, '..', '..');
+    const outputDir = path.join(backendRoot, 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     const safeName = (formData.title || formData.projectName || formData.projectTitle || 'Report').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
@@ -320,9 +348,14 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
     const outputPath = path.join(outputDir, outputFile);
     fs.writeFileSync(outputPath, mergedBuffer);
 
+    const formatDate = (val) => {
+        if (!val) return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    };
     const projectName = formData.title || formData.projectName || formData.projectTitle || 'Untitled Project';
     const clientName = formData.clientName || formData.client_name || 'Confidential';
-    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const dateStr = formData.date ? formatDate(formData.date) : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     await replaceTokens(outputPath, {
         '{{PROJECT_NAME}}': projectName, '{{CLIENT_NAME}}': clientName, '{{DATE}}': dateStr,
         '{{Title}}': projectName, '{{Subtitle}}': clientName,
@@ -330,6 +363,15 @@ export async function assemblePresentation({ presentationType, formData = {}, pl
         '{{project_name}}': projectName, '{{client_name}}': clientName,
         '{{TITLE}}': projectName, '{{SUBTITLE}}': clientName,
         '{{YEAR}}': new Date().getFullYear().toString(),
+        '{{CITY}}': formData.city || formData.City || '',
+        '{{PROPERTY_TYPE}}': formData.propertyType || formData.property_type || '',
+        '{{ASSET_CATEGORY}}': formData.assetCategory || formData.asset_category || '',
+        '{{NUMBER_OF_UNITS}}': String(formData.numberOfUnits ?? formData.number_of_units ?? formData.units ?? 'TBD'),
+        '{{PRICE_RANGE}}': formData.priceRange || formData.price_range || '',
+        '{{TOTAL_REVENUE}}': formData.totalRevenue || formData.total_revenue || 'TBD',
+        '{{DEV_COST}}': formData.devCost || formData.dev_cost || 'TBD',
+        '{{TARGET_IRR}}': formData.targetIRR || formData.target_irr || 'TBD',
+        '{{PAYBACK_PERIOD}}': formData.paybackPeriod || formData.payback_period || 'TBD',
     });
 
     const fileSize = fs.statSync(outputPath).size;
