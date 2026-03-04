@@ -59,8 +59,14 @@ function getLibraryPath(typeName = 'Feasibility Study') {
         if (fs.existsSync(p)) return p;
     }
     const libRoot = path.join(backendRoot, 'Library');
-    if (fs.existsSync(libRoot)) return path.join(libRoot, typeName);
-    throw new Error(`Library folder not found for type: ${typeName}`);
+    const typePath = path.join(libRoot, typeName);
+    if (!fs.existsSync(libRoot)) {
+        throw new Error(`Library folder not found. Run: npm run populate`);
+    }
+    if (!fs.existsSync(typePath)) {
+        throw new Error(`Library folder for "${typeName}" not found. Run: npm run populate`);
+    }
+    return typePath;
 }
 
 // ─── pptx-automizer assembly ──────────────────────────────────────────────────

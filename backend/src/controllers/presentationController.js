@@ -8,6 +8,54 @@ import { generatePptxFromForm } from '../services/generatePptxFromForm.js';
 // Set USE_PPTX_AUTOMIZER=false to fall back to JSZip merge.
 const USE_AUTOMIZER = process.env.USE_PPTX_AUTOMIZER !== 'false' && process.env.USE_PPTX_AUTOMIZER !== '0';
 
+/**
+ * Convert formData + plots from schema/DynamicGenerator format to generatePptxFromForm format.
+ * Used when Library is missing (e.g. Credential Report) — fallback to dynamic PPTX generator.
+ */
+function toGeneratePptxFormData(formData, plots, presentationTypeName) {
+    const fd = formData || {};
+    const p = Array.isArray(plots) && plots.length > 0 ? plots : [];
+
+    if (p.length > 0) {
+        const plotList = p.map(pl => {
+            const c = pl.criteria || pl.data || pl;
+            return {
+                city: c.City || c.city || c['Target Market'] || 'Dubai',
+                propertyType: c.Category || c.propertyType || c['Asset Type'] || 'Luxury Apartments',
+                assetCategory: c['Asset Type'] || c.assetCategory || c.Sector || 'Residential',
+                specifications: c.Specifications || c.specifications || c.specs || fd.priceRange || '2M - 5M AED',
+            };
+        });
+        return {
+            plots: plotList,
+            clientName: fd.clientName || fd.client_name || 'Confidential',
+            projectTitle: fd.title || fd.projectTitle || fd.projectName || `${presentationTypeName} Report`,
+            coverTitle: fd.coverTitle || presentationTypeName,
+            coverSubtitle: fd.coverSubtitle || plotList.map(x => x.city).join(' · '),
+            date: fd.date || new Date().toISOString().split('T')[0],
+            numberOfUnits: fd.numberOfUnits || fd.units || 'TBD',
+        };
+    }
+
+    // Map Target Market (KSA, UAE, Qatar) to city for Credential Report
+    const targetMarket = fd['Target Market'] || fd.City || fd.city || '';
+    const cityMap = { KSA: 'Riyadh', UAE: 'Dubai', Qatar: 'Doha' };
+    const city = fd.City || fd.city || cityMap[targetMarket] || targetMarket || 'Dubai';
+
+    return {
+        city,
+        propertyType: fd.Category || fd.propertyType || fd['Asset Type'] || 'Luxury Apartments',
+        assetCategory: fd['Asset Type'] || fd.assetCategory || fd.Sector || 'Residential',
+        clientName: fd.clientName || fd.client_name || 'Confidential',
+        projectTitle: fd.title || fd.projectTitle || fd.projectName || `${presentationTypeName} Report`,
+        coverTitle: fd.coverTitle || presentationTypeName,
+        coverSubtitle: fd.coverSubtitle || targetMarket || city,
+        date: fd.date || new Date().toISOString().split('T')[0],
+        numberOfUnits: fd.numberOfUnits || fd.units || 'TBD',
+        priceRange: fd.Specifications || fd.priceRange || fd.specifications || '2M - 5M AED',
+    };
+}
+
 
 /**
  * Presentation Generation Controller
@@ -530,23 +578,38 @@ const createAndDownload = async (req, res, next) => {
 
         // THE SYSTEM: Spotify-like "Playlist" Assembly
         // If the type has defined sections, we use the Assembly Engine.
-        // This works for both Multi-Plot (List of Songs) and Single-Context project types.
+        // Falls back to generatePptxFromForm when Library is missing (e.g. Credential Report).
         if (presentationType.sections && presentationType.sections.length > 0) {
-            console.log(`🏭 Starting System Assembly for ${presentationType.name}${USE_AUTOMIZER ? ' (pptx-automizer)' : ''}`);
+            let result;
 
-            const result = USE_AUTOMIZER
-                ? await assemblePresentationAutomizer({
-                    presentationType,
-                    formData,
-                    plots: plots || [],
-                    userId
-                })
-                : await assemblePresentation({
-                presentationType,
-                formData,
-                plots: plots || [], // Pass empty array if null, engine handles it as single context
-                userId
-            });
+            try {
+                console.log(`🏭 Starting System Assembly for ${presentationType.name}${USE_AUTOMIZER ? ' (pptx-automizer)' : ''}`);
+
+                result = USE_AUTOMIZER
+                    ? await assemblePresentationAutomizer({
+                        presentationType,
+                        formData,
+                        plots: plots || [],
+                        userId
+                    })
+                    : await assemblePresentation({
+                        presentationType,
+                        formData,
+                        plots: plots || [],
+                        userId
+                    });
+            } catch (assemblyErr) {
+                const msg = assemblyErr?.message || '';
+                const isLibraryMissing = /cover\.pptx not found|Library folder not found|Library.*not found/i.test(msg);
+
+                if (isLibraryMissing) {
+                    console.log(`⚠️ [CreateDownload] Library not found for "${presentationType.name}". Falling back to generatePptxFromForm.`);
+                    const genFormData = toGeneratePptxFormData(formData, plots || [], presentationType.name);
+                    result = await generatePptxFromForm(genFormData);
+                } else {
+                    throw assemblyErr;
+                }
+            }
 
             // History Tracking
             try {
