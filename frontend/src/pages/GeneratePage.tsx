@@ -17,16 +17,20 @@ const GeneratePage = () => {
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setMode('simple')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              mode === 'simple' ? 'bg-primary text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+            className={`px-4 py-2 rounded-lg font-medium transition-all text-sm ${
+              mode === 'simple'
+                ? 'bg-primary text-primary-foreground shadow-card'
+                : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80'
             }`}
           >
             Dynamic PPTX (Simple Form)
           </button>
           <button
             onClick={() => setMode('schema')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              mode === 'schema' ? 'bg-primary text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+            className={`px-4 py-2 rounded-lg font-medium transition-all text-sm ${
+              mode === 'schema'
+                ? 'bg-primary text-primary-foreground shadow-card'
+                : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80'
             }`}
           >
             Feasibility Study (Schema)

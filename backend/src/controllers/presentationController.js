@@ -430,10 +430,12 @@ export {
 const generatePptx = async (req, res, next) => {
     try {
         const formData = req.body;
-        if (!formData.city && !formData.propertyType && !formData.assetCategory) {
+        const hasSingle = formData.city || formData.propertyType || formData.assetCategory;
+        const hasPlots = formData.plots && Array.isArray(formData.plots) && formData.plots.length > 0;
+        if (!hasSingle && !hasPlots) {
             return res.status(400).json({
                 success: false,
-                message: 'At least one of City, Property Type, or Asset Category is required'
+                message: 'At least one of City, Property Type, or Asset Category is required (or provide a plots array)'
             });
         }
 

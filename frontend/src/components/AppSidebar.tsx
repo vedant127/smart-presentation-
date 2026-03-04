@@ -1,5 +1,6 @@
-import { FileText, Settings, FolderOpen, Zap } from "lucide-react";
+import { FileText, Settings, FolderOpen, Zap, Sun, Moon } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -10,9 +11,10 @@ const navItems = [
 
 const AppSidebar = () => {
   const location = useLocation();
+  const { theme, setTheme } = useTheme();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col bg-sidebar">
+    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col bg-sidebar border-r border-sidebar-border">
       {/* Logo */}
       <div className="flex items-center gap-3 px-6 py-6">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
@@ -52,7 +54,25 @@ const AppSidebar = () => {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-sidebar-border px-6 py-4">
+      <div className="border-t border-sidebar-border px-6 py-4 space-y-3">
+        <button
+          type="button"
+          onClick={() => setTheme((theme ?? "dark") === "dark" ? "light" : "dark")}
+          className="flex items-center gap-2 w-full rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
+          title={(theme ?? "dark") === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {(theme ?? "dark") === "dark" ? (
+            <>
+              <Sun className="h-4 w-4" />
+              <span>Light mode</span>
+            </>
+          ) : (
+            <>
+              <Moon className="h-4 w-4" />
+              <span>Dark mode</span>
+            </>
+          )}
+        </button>
         <p className="text-xs text-sidebar-muted">FELIX v1.0</p>
         <p className="text-xs text-sidebar-muted/60">Report Generation Suite</p>
       </div>
